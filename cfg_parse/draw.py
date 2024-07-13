@@ -1,13 +1,21 @@
+from typing import Deque, Optional
+
+import matplotlib.axes
 import matplotlib.pyplot as plt
 import networkx as nx
 
-from cfg_parse.base import Symbol, SymbolGraph, SymbolType
+from cfg_parse.base import CFGStatefulGraph, Symbol, SymbolGraph, SymbolType
 from cfg_parse.cfg_build.helpers import get_symbols_from_generated_symbol_graph
 
 
-def draw_symbol_graph(symbol_graph: SymbolGraph):
+def _setup_symbol_graph_networkx(
+    symbol_graph: SymbolGraph,
+    highlight: Optional[Symbol] = None,
+    ax: Optional[matplotlib.axes.Axes] = None,
+):
     G = nx.DiGraph()
 
+    # Passing by value, not by reference.
     symbol_graph_copy = symbol_graph.copy()
 
     symbols = get_symbols_from_generated_symbol_graph(symbol_graph_copy)
@@ -23,8 +31,8 @@ def draw_symbol_graph(symbol_graph: SymbolGraph):
 
     # Adding the connections.
     (
-        symbol_graph_copy.nodes[symbol_special_initials],
-        symbol_graph_copy.nodes[symbol_special_finals],
+        symbol_graph_copy.tree[symbol_special_initials],
+        symbol_graph_copy.tree[symbol_special_finals],
     ) = (symbol_graph_copy.initials, symbol_graph_copy.finals)
 
     labels = {}
@@ -33,38 +41,54 @@ def draw_symbol_graph(symbol_graph: SymbolGraph):
         G.add_node(symbol)
         labels[symbol] = symbol.content
 
-    for symbol, connections in symbol_graph_copy.nodes.items():
+    for symbol, connections in symbol_graph_copy.tree.items():
         for connection in connections:
             G.add_edge(symbol, connection)
 
-    # Setting the figure size.
-    plt.figure(figsize=(5, 5))
-
+    # Setting the layout.
     pos = nx.nx_agraph.graphviz_layout(G, prog="dot")
 
-    # Using graphviz to layout the nodes.
+    # Setting a highlight.
+    node_color = (
+        "lightblue"
+        if highlight is None
+        else [
+            "red" if symbol == highlight else "lightblue" for symbol in symbols.values()
+        ]
+    )
+
+    # Using graphviz to layout the tree.
     nx.draw(
         G,
         pos,
         with_labels=True,
         labels=labels,
-        node_color="lightblue",
+        node_size=800,
+        node_color=node_color,
+        edgecolors="gray",
+        alpha=0.8,
         edge_color="gray",
+        font_size=12,
+        font_family="monospace",
+        ax=ax,
     )
 
+
+def draw_symbol_graph(symbol_graph: SymbolGraph):
+    _setup_symbol_graph_networkx(symbol_graph)
     plt.show()
 
 
-# if __name__ == "__main__":
+def draw_cfg_generation_state(generation_state: Deque[CFGStatefulGraph]):
+    num_plots = len(generation_state)
 
-#     symbol_graph_left = construct_symbol_subgraph(
-#         """ factor "+" | factor "-" """.split()
-#     )
-#     symbol_graph_right = construct_symbol_subgraph(
-#         """ Regex([0-9]*.[0-9]*) | "-" factor |  "(" expression ")" """.split()
-#     )
-#     generated_symbol_graph_output = connect_symbol_graph(
-#         symbol_graph_left, symbol_graph_right
-#     )
+    _, axes = plt.subplots(1, num_plots, figsize=(15, 10))
 
-#     draw_symbol_graph(generated_symbol_graph_output)
+    for i, stateful_symbol_graph in enumerate(generation_state):
+        _setup_symbol_graph_networkx(
+            stateful_symbol_graph.graph, stateful_symbol_graph.state, axes[i]
+        )
+        axes[i].set_title(f"[Stack Lv.{i}] {stateful_symbol_graph.label}")
+
+    plt.tight_layout()
+    plt.show()
