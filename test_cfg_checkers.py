@@ -1,10 +1,7 @@
 import pytest
 
 from cfg_parse.cfg_build.build import _convert_str_def_to_str_queue
-
 from cfg_parse.cfg_guide.guide import _divide_cfg_grammar_into_definitions
-
-
 from cfg_parse.exceptions import InvalidDelimiters, InvalidGrammar, InvalidSymbol
 
 # ----------------------------- InvalidSymbol -----------------------------
@@ -15,13 +12,13 @@ def invalid_symbol_terminal_missing_left_quotation():
     return """ Regex("[0-9]*.[0-9]*") | -" factor |  "(" expression ")" """
 
 
-def test_invalid_symbol_regex_missing_left_quotation(
+def test_invalid_symbol_terminal_missing_left_quotation(
     invalid_symbol_terminal_missing_left_quotation: str,
 ):
     with pytest.raises(InvalidSymbol) as exc_info:
         _convert_str_def_to_str_queue(invalid_symbol_terminal_missing_left_quotation)
 
-    assert str(exc_info.value) == f'Invalid symbol name -".'
+    assert str(exc_info.value) == 'Invalid symbol name -".'
 
 
 @pytest.fixture
@@ -35,7 +32,7 @@ def test_invalid_symbol_terminal_missing_right_quotation(
     with pytest.raises(InvalidSymbol) as exc_info:
         _convert_str_def_to_str_queue(invalid_symbol_terminal_missing_right_quotation)
 
-    assert str(exc_info.value) == f'Invalid symbol name "-.'
+    assert str(exc_info.value) == 'Invalid symbol name "-.'
 
 
 @pytest.fixture
@@ -49,7 +46,7 @@ def test_invalid_symbol_regex_missing_left_quotation(
     with pytest.raises(InvalidSymbol) as exc_info:
         _convert_str_def_to_str_queue(invalid_symbol_regex_missing_left_quotation)
 
-    assert str(exc_info.value) == f'Invalid symbol name Regex([0-9]*.[0-9]*").'
+    assert str(exc_info.value) == 'Invalid symbol name Regex([0-9]*.[0-9]*").'
 
 
 @pytest.fixture
@@ -63,7 +60,7 @@ def test_invalid_symbol_regex_missing_right_quotation(
     with pytest.raises(InvalidSymbol) as exc_info:
         _convert_str_def_to_str_queue(invalid_symbol_regex_missing_right_quotation)
 
-    assert str(exc_info.value) == f'Invalid symbol name Regex("[0-9]*.[0-9]*).'
+    assert str(exc_info.value) == 'Invalid symbol name Regex("[0-9]*.[0-9]*).'
 
 
 @pytest.fixture
@@ -79,7 +76,7 @@ def test_invalid_symbol_non_terminal_with_special_characters_0x40(
             invalid_symbol_non_terminal_with_special_characters_0x40
         )
 
-    assert str(exc_info.value) == f"Invalid symbol name fact@or."
+    assert str(exc_info.value) == "Invalid symbol name fact@or."
 
 
 @pytest.fixture
@@ -95,7 +92,7 @@ def test_invalid_symbol_non_terminal_with_special_characters_0x2F(
             invalid_symbol_non_terminal_with_special_characters_0x2F
         )
 
-    assert str(exc_info.value) == f"Invalid symbol name expre/ssion."
+    assert str(exc_info.value) == "Invalid symbol name expre/ssion."
 
 
 @pytest.fixture
@@ -111,7 +108,7 @@ def test_invalid_symbol_non_terminal_with_special_characters_0x5E(
             invalid_symbol_non_terminal_with_special_characters_0x5E
         )
 
-    assert str(exc_info.value) == f"Invalid symbol name expressi^on."
+    assert str(exc_info.value) == "Invalid symbol name expressi^on."
 
 
 # ----------------------------- InvalidDelimiters -----------------------------
@@ -130,7 +127,7 @@ def test_invalid_delimiters_missing_without_special_delimiters(
             invalid_delimiters_missing_without_special_delimiters
         )
 
-    assert str(exc_info.value) == f"Non enclosed delimiter `(` in `(`."
+    assert str(exc_info.value) == "Non enclosed delimiter `(` in `(`."
 
 
 @pytest.fixture
@@ -214,7 +211,7 @@ def test_invalid_delimiters_open_none_any_close_none_once(
 
     assert (
         str(exc_info.value)
-        == 'No opening delimiter `[` found for `]` in `( "(" expression [ factor "-" Regex("[0-9]*.[0-9]*") <<]>>`.'
+        == 'No opening delimiter `[` found for `]` in `( "(" expression { factor "-" Regex("[0-9]*.[0-9]*") <<]>>`.'
     )
 
 
@@ -223,7 +220,7 @@ def invalid_delimiters_open_none_once_close_none_any():
     return """ "(" expression [factor "-" Regex("[0-9]*.[0-9]*")} ")" """
 
 
-def test_invalid_delimiters_open_none_any_close_none_once(
+def test_invalid_delimiters_open_none_once_close_none_any(
     invalid_delimiters_open_none_once_close_none_any: str,
 ):
     with pytest.raises(InvalidDelimiters) as exc_info:
@@ -344,7 +341,7 @@ def invalid_grammar_redefinition():
     factor: NUMBER
            | "-" factor
            | "(" expression ")"
-    
+
     factor: NUMBER
            | "-" factor
            | "(" expression ")"
@@ -401,7 +398,7 @@ def invalid_grammar_sepr_colons_multiple():
     term: factor {("*" | "/"): factor}
 
     factor: NUMBER
-           | "-": factor
+           | "-" factor
            | "(" expression ")"
 
     NUMBER: Regex("[0-9]+\.[0-9]+")
