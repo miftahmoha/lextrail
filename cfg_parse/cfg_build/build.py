@@ -5,8 +5,8 @@ from cfg_parse.cfg_build.helpers import (
     _convert_str_def_to_str_queue,
     _convert_str_to_symbol,
     _discard_single_nodes_from_tree,
-    _get_symbol_predecessors,
     _get_symbol_from_content_attr,
+    _get_symbol_predecessors,
     _tree_contains_eos_symbol,
 )
 

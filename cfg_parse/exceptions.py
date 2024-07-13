@@ -16,3 +16,7 @@ class InvalidGrammar(Exception):
 
 class ParsingError(Exception):
     pass
+
+
+class InfiniteLoop(Exception):
+    pass

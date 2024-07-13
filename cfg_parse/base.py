@@ -64,7 +64,7 @@ class Symbol:
         return hash((self.content, self.s_type, self.s_id))
 
     def __eq__(self, other):
-        # Ensure equality is checked for all fields
+        # Ensure equality is checked for all fields.
         if not isinstance(other, Symbol):
             return False
 
@@ -113,7 +113,10 @@ class SymbolGraphType(Enum):
 
 
 @dataclass
-class SymbolGraphState:
+class CFGStatefulGraph:
     graph: SymbolGraph
     label: str
     state: Optional[Symbol] = None
+
+
+CFGGenerationState = Optional[Deque[CFGStatefulGraph]]

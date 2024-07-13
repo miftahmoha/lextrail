@@ -1,21 +1,69 @@
-import warnings
 import random
 import re
+import warnings
+from collections import deque
+from copy import deepcopy
 
-from typing import Deque
+from cfg_parse.base import OrderedSet, Symbol, SymbolGraph, SymbolType
+from cfg_parse.cfg_build.helpers import (
+    _get_symbol_predecessors,
+    _insert_space_between_delimiters,
+)
+from cfg_parse.exceptions import (
+    InfiniteLoop,
+    InvalidGrammar,
+    ParsingError,
+    SymbolNotFound,
+)
 
-from cfg_parse.base import Symbol, SymbolGraph, SymbolGraphState, SymbolType
-from cfg_parse.exceptions import InvalidGrammar, ParsingError
 
+def _get_symbol_from_content_attr(
+    symbol_graph: SymbolGraph, content: str
+) -> list[Symbol]:
+    symbols = []
 
-def _check_for_errors_grammar_def(current_rule: str, definition: str):
-    return NotImplemented
+    for symbol_initial in symbol_graph.initials:
+        if symbol_initial.content == content:
+            symbols.append(symbol_initial)
+
+    for symbol_successors in symbol_graph.tree.values():
+        for symbol_successor in symbol_successors:
+            if symbol_successor.content == content and symbol_successor not in symbols:
+                symbols.append(symbol_successor)
+
+    if len(symbols) == 0:
+        raise SymbolNotFound(f"No Symbol matching {content} was found.")
+
+    return symbols
 
 
 def _is_not_valid_rule_name(rule: str):
     # Special characters REGEX.
     regex = re.compile(r"[@_!#$%^&*()<>?/\\|}~:]")
     return regex.search(rule) is not None
+
+
+def _split_definition(definition: str):
+    return _insert_space_between_delimiters(definition).split()
+
+
+def _check_for_potential_infinite_loops(
+    rule: str, definition: str, symbol_graph: SymbolGraph
+):
+    is_loop = rule in _split_definition(definition)
+
+    if is_loop:
+        warnings.warn(
+            f"A potential loop of non-terminal symbols exists in {rule}: {definition}."
+        )
+
+        loop_symbols = _get_symbol_from_content_attr(symbol_graph, rule)
+
+        for loop_symbol in loop_symbols:
+            if _is_no_escape_from_infinite_loop(symbol_graph, loop_symbol):
+                raise InfiniteLoop(
+                    f"An infinite loop of non-terminal symbols `{rule} -> {rule}` is found in {rule}: {definition}."
+                )
 
 
 def _divide_cfg_grammar_into_definitions(grammar: str) -> dict[str, str]:
@@ -55,63 +103,79 @@ def _divide_cfg_grammar_into_definitions(grammar: str) -> dict[str, str]:
             divided_cfg_grammar_dict[current_rule] = definition.strip()
 
     if "start" not in divided_cfg_grammar_dict:
-        raise InvalidGrammar(f"The symbol `start` is non-existant.")
+        raise InvalidGrammar("The symbol `start` is non-existant.")
 
     return divided_cfg_grammar_dict
 
 
-# [NOTE] `StatefulSymbolGraph` is better.
-def _turn_symbol_graph_into_stateful_obj(symbol_graph: SymbolGraph, label: str):
-    return SymbolGraphState(symbol_graph, label)
+def dfs(symbol_graph: SymbolGraph, start: OrderedSet[Symbol]) -> list[Symbol]:
+    visited: list[Symbol] = []
+
+    stack = deque()  # type: ignore
+    stack.extend(list(start))
+
+    while stack:
+        vertex = stack.pop()
+        if vertex not in visited:
+            visited.append(vertex)
+            stack.extend(symbol_graph.tree[vertex])
+
+    return visited
 
 
-def _push_stateful_symbol_graph_layer_to_stack(
-    generation_state: Deque[SymbolGraphState],
-    symbol_graph_state_symbol_graph: SymbolGraph,
-    symbol_graph_state_symbol: Symbol,
-):
-    symbol_graph_state_upper_layer = _turn_symbol_graph_into_stateful_obj(
-        symbol_graph_state_symbol_graph, symbol_graph_state_symbol.content
-    )
+def _is_no_escape_from_infinite_loop(symbol_graph: SymbolGraph, symbol_inf: Symbol):
+    # Passing by value, not by reference.
+    symbol_graph_copy: SymbolGraph = deepcopy(symbol_graph)
 
-    # Set up the state for the bottom stack layer, it'll save where we left for when
-    # we pop the upper stack layer. We would then search for the next symbols from
-    # the last non-terminal symbol.
-    generation_state[-1].state = symbol_graph_state_symbol
+    is_no_escape: bool = True
 
-    # Add stack layer `StackGraphState` to `Deque[SymbolGraphState]`.
-    generation_state.append(symbol_graph_state_upper_layer)
+    def _recurse_escape(symbol_graph: SymbolGraph, current_symbol: Symbol):
+        nonlocal is_no_escape
+        predecessors: OrderedSet = OrderedSet([])
 
-    return generation_state
+        try:
+            predecessors.extend(
+                _get_symbol_predecessors(symbol_graph.tree, current_symbol)
+            )
+        except SymbolNotFound:
+            # [NOTE] Deals with a case when we reach the beggining of a subgraph,
+            # we search if there are some `escapes` in other subgraphs.
+            if current_symbol in symbol_graph.initials and current_symbol != symbol_inf:
+                predecessors.extend(symbol_graph.initials)
+                predecessors.discard(current_symbol)
+                visited = dfs(symbol_graph, predecessors)
 
+                if not visited:
+                    return
 
-def _get_non_terminal_loop_str_from_generation_state_stack(
-    generation_state_loop_queue: Deque[SymbolGraphState],
-) -> str:
-    initial = generation_state_loop_queue.popleft()
+                if symbol_inf not in visited:
+                    is_no_escape = False
+            else:
+                return
 
-    result = initial.label
+        for predecessor in predecessors:
+            successors = symbol_graph_copy.tree[predecessor]
+            successors.discard(current_symbol)
+            visited = dfs(symbol_graph, successors)
 
-    for generation_state in generation_state_loop_queue:
-        result += " ->" + generation_state.label
+            if not visited:
+                _recurse_escape(symbol_graph, predecessor)
+                continue
 
-    result += " ->" + initial.label
+            if symbol_inf not in visited:
+                is_no_escape = False
 
-    return result
+    _recurse_escape(symbol_graph_copy, symbol_inf)
 
-
-def _exist_infinite_loop_around_non_terminal_symbols(
-    generation_state: Deque[SymbolGraphState],
-) -> bool:
-    if len(generation_state) > 1:
-        return generation_state[-1].label == generation_state[0].label
-    return False
+    return is_no_escape
 
 
 def _extract_str_from_symbols(symbols: list[Symbol]) -> list[str]:
     symbols_str: list[str] = []
+
     for symbol in symbols:
         symbols_str.append(symbol.content)
+
     return symbols_str
 
 

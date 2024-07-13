@@ -103,7 +103,6 @@ def _check_for_delimiter_coherence(symbol_def_str: list[str]):
 
         elif symbol_str == "]":
             if stack_delim_tracker[-1][1] != "[":
-                # print(stack_delim_tracker[: symbol_index + 1])
                 raise InvalidDelimiters(
                     f'No opening delimiter `[` found for `]` in `{" ".join(symbol_def_str[:symbol_index])} <<{symbol_def_str[symbol_index]}>>`.'
                 )
@@ -166,7 +165,7 @@ def _insert_standard_delimiters(symbol_def: str):
 
 
 # Insert space between delimiters, `terminal` delimiters `"(", ")", "[", "]", "{", "}"` are not considered.
-def _insert_space_between_delimiters(symbol_def_str: list[str]) -> str:
+def _insert_space_between_delimiters(symbol_def_str: str) -> str:
     in_quote = False
     in_regex = False
     result = []
@@ -176,16 +175,21 @@ def _insert_space_between_delimiters(symbol_def_str: list[str]) -> str:
         if symbol_def_str[i] == '"' and not in_regex:
             in_quote = not in_quote
             result.append(symbol_def_str[i])
+
         elif symbol_def_str[i : i + 5] == "Regex":
             in_regex = True
             result.append(symbol_def_str[i])
+
         elif symbol_def_str[i] in "([{" and not in_quote and not in_regex:
             result.append(" " + symbol_def_str[i] + " ")
+
         elif symbol_def_str[i] in ")]}" and not in_quote and not in_regex:
             result.append(" " + symbol_def_str[i] + " ")
+
         elif symbol_def_str[i] == ")" and in_regex:
             in_regex = False
             result.append(symbol_def_str[i])
+
         else:
             result.append(symbol_def_str[i])
         i += 1
