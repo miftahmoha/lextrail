@@ -8,7 +8,7 @@ from cfg_parse.cfg_build.build import (
     connect_symbol_graph,
     construct_symbol_subgraph,
 )
-from cfg_parse.cfg_build.helpers import get_symbols_from_generated_symbol_graph
+from cfg_parse.cfg_build.helpers import _get_symbols_from_generated_symbol_graph
 
 # ----------------------------- construct_symbol_subgraph -----------------------------
 
@@ -22,7 +22,7 @@ def test_construct_symbol_subgraph_simple_subdef_without_or(
     simple_subdef_without_or: str,
 ):
     generated_symbol_graph = construct_symbol_subgraph(simple_subdef_without_or.split())
-    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+    symbols = _get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
     tree = defaultdict(
@@ -46,7 +46,7 @@ def simple_subdef_with_or():
 
 def test_construct_symbol_subgraph_simple_subdef_with_or(simple_subdef_with_or: str):
     generated_symbol_graph = construct_symbol_subgraph(simple_subdef_with_or.split())
-    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+    symbols = _get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols["factor|0"], symbols["factor|1"]])
     tree = defaultdict(
@@ -72,7 +72,7 @@ def test_construct_symbol_subgraph_simple_subdef_with_regex(
     simple_subdef_with_regex: str,
 ):
     generated_symbol_graph = construct_symbol_subgraph(simple_subdef_with_regex.split())
-    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+    symbols = _get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"[0-9]*.[0-9]*"|0']])
     tree: dict[Symbol, OrderedSet] = dict(
@@ -96,7 +96,7 @@ def test_construct_symbol_subgraph_subdef_with_regex_and_or(
     subdef_with_regex_and_or: str,
 ):
     generated_symbol_graph = build_symbol_graph(subdef_with_regex_and_or)
-    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+    symbols = _get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet(
         [
@@ -138,7 +138,7 @@ def test_connect_symbol_graph_simple_subdefs(
         symbol_sink_graph, symbol_source_graph
     )
 
-    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+    symbols = _get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
     tree: dict[Symbol, OrderedSet] = dict(
@@ -160,7 +160,7 @@ def test_connect_symbol_graph_simple_subdefs_with_or(
     symbol_graph_lhs = construct_symbol_subgraph(simple_subdef_with_or.split())
     symbol_graph_rhs = construct_symbol_subgraph(simple_subdef_without_or.split())
     generated_symbol_graph = connect_symbol_graph(symbol_graph_lhs, symbol_graph_rhs)
-    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+    symbols = _get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols["factor|0"], symbols["factor|1"]])
     tree: dict[Symbol, OrderedSet] = dict(
@@ -187,7 +187,7 @@ def test_connect_symbol_graph_subdefs_with_regex_and_or(
     symbol_graph_left = construct_symbol_subgraph(simple_subdef_with_or.split())
     symbol_graph_right = construct_symbol_subgraph(subdef_with_regex_and_or.split())
     generated_symbol_graph = connect_symbol_graph(symbol_graph_left, symbol_graph_right)
-    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+    symbols = _get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols["factor|0"], symbols["factor|1"]])
     tree: dict[Symbol, OrderedSet] = dict(
@@ -247,7 +247,7 @@ def test_build_graph_def_without_or_without_special_delimiters(
     generated_symbol_graph = build_symbol_graph(
         def_without_or_without_special_delimiters
     )
-    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+    symbols = _get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
     tree: dict[Symbol, OrderedSet] = dict(
@@ -277,7 +277,7 @@ def test_build_graph_def_without_or_seq_without_special_delimiters(
     generated_symbol_graph = build_symbol_graph(
         def_without_or_seq_without_special_delimiters
     )
-    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+    symbols = _get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
     tree: dict[Symbol, OrderedSet] = dict(
@@ -314,7 +314,7 @@ def test_build_graph_def_without_or_seq_disrupt_in_between_and_end_without_speci
     generated_symbol_graph = build_symbol_graph(
         def_without_or_seq_disrupt_in_between_and_end_without_special_delimiters
     )
-    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+    symbols = _get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
     tree: dict[Symbol, OrderedSet] = dict(
@@ -355,7 +355,7 @@ def test_build_graph_def_with_out_or_without_special_delimiters(
     generated_symbol_graph = build_symbol_graph(
         def_with_out_or_without_special_delimiters
     )
-    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+    symbols = _get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
     tree: dict[Symbol, OrderedSet] = dict(
@@ -387,7 +387,7 @@ def test_build_graph_def_with_out_or_ext_without_special_delimiters(
     generated_symbol_graph = build_symbol_graph(
         def_with_out_or_ext_without_special_delimiters
     )
-    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+    symbols = _get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
     tree: dict[Symbol, OrderedSet] = dict(
@@ -421,7 +421,7 @@ def test_build_graph_def_with_in_and_out_or_without_special_delimiters(
     generated_symbol_graph = build_symbol_graph(
         def_with_in_and_out_or_without_special_delimiters
     )
-    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+    symbols = _get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
     tree: dict[Symbol, OrderedSet] = dict(
@@ -454,7 +454,7 @@ def test_build_graph_def_with_in_and_out_ext_or_without_special_delimiters(
     generated_symbol_graph = build_symbol_graph(
         def_with_in_and_out_ext_or_without_special_delimiters
     )
-    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+    symbols = _get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
     tree: dict[Symbol, OrderedSet] = dict(
@@ -492,7 +492,7 @@ def test_build_graph_def_with_or_with_special_delimiters_none_any(
     generated_symbol_graph = build_symbol_graph(
         def_without_or_with_special_delimiters_none_any
     )
-    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+    symbols = _get_symbols_from_generated_symbol_graph(generated_symbol_graph)
     initials = OrderedSet([symbols['"("|0']])
     tree: dict[Symbol, OrderedSet] = dict(
         {
@@ -528,7 +528,7 @@ def test_build_graph_def_with_out_or_with_special_delimiters(
     generated_symbol_graph = build_symbol_graph(
         def_with_out_or_with_special_delimiters_none_any
     )
-    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+    symbols = _get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
     tree: dict[Symbol, OrderedSet] = dict(
@@ -565,7 +565,7 @@ def test_build_graph_def_with_in_and_out_or_with_special_delimiters_none_any(
     generated_symbol_graph = build_symbol_graph(
         def_with_in_and_out_or_with_special_delimiters_none_any
     )
-    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+    symbols = _get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
     tree: dict[Symbol, OrderedSet] = dict(
@@ -607,7 +607,7 @@ def test_build_graph_def_with_in_and_out_ext_or_with_special_delimiters_none_any
     generated_symbol_graph = build_symbol_graph(
         def_with_in_and_out_ext_or_with_special_delimiters_none_any
     )
-    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+    symbols = _get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
     tree: dict[Symbol, OrderedSet] = dict(
@@ -671,7 +671,7 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_with_special_delimiters_none
     generated_symbol_graph = build_symbol_graph(
         def_with_in_and_out_ext_or_seq_with_special_delimiters_none_any
     )
-    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+    symbols = _get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
     tree: dict[Symbol, OrderedSet] = dict(
@@ -737,7 +737,7 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_with_special_delimiter
     generated_symbol_graph = build_symbol_graph(
         def_with_in_and_out_ext_or_seq_mixed_with_special_delimiters_none_any
     )
-    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+    symbols = _get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
     tree: dict[Symbol, OrderedSet] = dict(
@@ -802,7 +802,7 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_end_with_speci
     generated_symbol_graph = build_symbol_graph(
         def_with_in_and_out_ext_or_seq_mixed_disrupt_end_with_special_delimiters_none_any
     )
-    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+    symbols = _get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
     tree: dict[Symbol, OrderedSet] = dict(
@@ -870,7 +870,7 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and
     generated_symbol_graph = build_symbol_graph(
         def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and_end_with_special_delimiters_none_any
     )
-    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+    symbols = _get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
     tree: dict[Symbol, OrderedSet] = dict(
@@ -943,7 +943,7 @@ def test_build_graph_def_without_or_with_special_delimiters_none_once(
     generated_symbol_graph = build_symbol_graph(
         def_without_or_with_special_delimiters_none_once
     )
-    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+    symbols = _get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
     tree: dict[Symbol, OrderedSet] = dict(
@@ -978,7 +978,7 @@ def test_build_graph_def_with_out_or_with_special_delimiters_none_once(
     generated_symbol_graph = build_symbol_graph(
         def_with_out_or_with_special_delimiters_none_once
     )
-    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+    symbols = _get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
     tree: dict[Symbol, OrderedSet] = dict(
@@ -1014,7 +1014,7 @@ def test_build_graph_def_with_in_and_out_or_with_special_delimiters_none_once(
     generated_symbol_graph = build_symbol_graph(
         def_with_in_and_out_or_with_special_delimiters_none_once
     )
-    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+    symbols = _get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
     tree: dict[Symbol, OrderedSet] = dict(
@@ -1052,7 +1052,7 @@ def test_build_graph_def_with_in_and_out_ext_or_with_special_delimiters_none_onc
     generated_symbol_graph = build_symbol_graph(
         def_with_in_and_out_ext_or_with_special_delimiters_none_once
     )
-    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+    symbols = _get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
     tree: dict[Symbol, OrderedSet] = dict(
@@ -1095,7 +1095,7 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_with_special_delimiters_none
     generated_symbol_graph = build_symbol_graph(
         def_with_in_and_out_ext_or_seq_with_special_delimiters_none_once
     )
-    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+    symbols = _get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
     tree: dict[Symbol, OrderedSet] = dict(
@@ -1140,7 +1140,7 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_with_special_delimiter
     generated_symbol_graph = build_symbol_graph(
         def_with_in_and_out_ext_or_seq_mixed_with_special_delimiters_none_once
     )
-    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+    symbols = _get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
     tree: dict[Symbol, OrderedSet] = dict(
@@ -1184,7 +1184,7 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_end_with_speci
     generated_symbol_graph = build_symbol_graph(
         def_with_in_and_out_ext_or_seq_mixed_disrupt_end_with_special_delimiters_none_once
     )
-    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+    symbols = _get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
     tree: dict[Symbol, OrderedSet] = dict(
@@ -1236,7 +1236,7 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and
     generated_symbol_graph = build_symbol_graph(
         def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and_end_with_special_delimiters_none_once
     )
-    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+    symbols = _get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
     tree: dict[Symbol, OrderedSet] = dict(
@@ -1288,7 +1288,7 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and
     generated_symbol_graph = build_symbol_graph(
         def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and_end_with_special_delimiters_none_any_once
     )
-    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+    symbols = _get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
     tree: dict[Symbol, OrderedSet] = dict(

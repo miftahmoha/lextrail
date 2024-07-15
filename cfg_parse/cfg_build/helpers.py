@@ -215,7 +215,7 @@ def _convert_str_def_to_str_queue(symbol_def: str) -> Deque[str]:
     return queue
 
 
-def get_symbols_from_generated_symbol_graph(
+def _get_symbols_from_generated_symbol_graph(
     symbol_graph: SymbolGraph,
 ) -> dict[str, Symbol]:
     symbols: dict[str, Symbol] = {}
