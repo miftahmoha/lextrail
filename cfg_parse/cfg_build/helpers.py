@@ -168,11 +168,21 @@ def _insert_standard_delimiters(symbol_def: str):
 def _insert_space_between_delimiters(symbol_def_str: str) -> str:
     in_quote = False
     in_regex = False
+    terminal = False
     result = []
     i = 0
 
     while i < len(symbol_def_str):
-        if symbol_def_str[i] == '"' and not in_regex:
+        # Special case where '"' is used as a terminal symbol.
+        if symbol_def_str[i : i + 3] == '"""':
+            terminal = True
+            result.append(symbol_def_str[i])
+
+        elif symbol_def_str[i - 2 : i + 1] == '"""':
+            terminal = False
+            result.append(symbol_def_str[i])
+
+        elif symbol_def_str[i] == '"' and not in_regex and not terminal:
             in_quote = not in_quote
             result.append(symbol_def_str[i])
 
