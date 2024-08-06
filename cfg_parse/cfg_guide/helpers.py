@@ -1,11 +1,20 @@
+import inspect
 import random
 import re
 import warnings
 from collections import deque
 from copy import deepcopy
+from typing import Callable
 
-from cfg_parse.base import OrderedSet, Symbol, SymbolGraph, SymbolType
+from cfg_parse.base import (
+    CFGGenerationState,
+    OrderedSet,
+    Symbol,
+    SymbolGraph,
+    SymbolType,
+)
 from cfg_parse.cfg_build.helpers import (
+    _convert_str_to_symbol,
     _get_symbol_predecessors,
     _insert_space_between_delimiters,
 )
@@ -17,7 +26,7 @@ from cfg_parse.exceptions import (
 )
 
 
-def _get_symbol_from_content_attr(
+def _get_symbols_from_content_attr_for_graphs(
     symbol_graph: SymbolGraph, content: str
 ) -> list[Symbol]:
     symbols = []
@@ -57,7 +66,7 @@ def _check_for_potential_infinite_loops(
             f"A potential loop of non-terminal symbols exists in {rule}: {definition}."
         )
 
-        loop_symbols = _get_symbol_from_content_attr(symbol_graph, rule)
+        loop_symbols = _get_symbols_from_content_attr_for_graphs(symbol_graph, rule)
 
         for loop_symbol in loop_symbols:
             if _is_no_escape_from_infinite_loop(symbol_graph, loop_symbol):
@@ -233,3 +242,83 @@ def _retrace_symbol_obj_from_str(
         return chosen_symbol
 
     return chosen_symbols[0]
+
+
+def _validate_encoder(encoder: Callable[[str], list[int]]):
+    # Get the function's signature.
+    signature = inspect.signature(encoder)
+
+    # Check the input parameter.
+    params = list(signature.parameters.values())
+    if len(params) != 1 or params[0].annotation != str:
+        raise TypeError("Encoder must take exactly one string argument.")
+
+    # Check the return type.
+    if signature.return_annotation != list[int]:
+        raise TypeError("Encoder must return a list of integers.")
+
+
+def _get_paths_if_valid_single_token(
+    symbol_prev: Symbol,
+    next_terminals_w_history: dict[Symbol, CFGGenerationState],
+    encoder: Callable[[str], list[int]],
+) -> dict[Symbol, CFGGenerationState]:
+    valid_paths: dict[Symbol, CFGGenerationState] = {}
+
+    # Pass by value, not by reference.
+    next_terminals_w_history_copy = deepcopy(next_terminals_w_history)
+
+    for symbol_next in next_terminals_w_history_copy.keys():
+        if symbol_next.s_type == SymbolType.TERMINAL:
+            str_comb = symbol_prev.content[1:-1] + symbol_next.content[1:-1]
+            if len(encoder(str_comb)) == 1:
+                symbol_comb = _convert_str_to_symbol('"' + str_comb + '"')
+                symbol_comb_hist = next_terminals_w_history_copy[symbol_next]
+                # Give `symbol_next`'s connections to `symbol_comb`.
+                # [NOTE] Always going to be so, if a symbol exists in `next_terminals_w_history.keys()`
+                # then it'll have a history.
+                if symbol_comb_hist:
+                    symbol_comb_hist[-1].graph.tree[symbol_comb] = symbol_comb_hist[
+                        -1
+                    ].graph.tree[symbol_next]
+                # Add path.
+                valid_paths[symbol_comb] = symbol_comb_hist
+
+    return valid_paths
+
+
+def update_for_possible_single_token_combinations(
+    cfg_object,
+    encoder: Callable[[str], list[int]],
+) -> dict[Symbol, CFGGenerationState]:
+    proposals: dict[Symbol, CFGGenerationState] = {}
+
+    # [NOTE] Needs better.
+    # _validate_encoder(encoder)
+
+    def recurse_update(next_terminals_w_history: dict[Symbol, CFGGenerationState]):
+        nonlocal proposals
+
+        # Pass by value, not by reference.
+        cfg_object_copy = deepcopy(cfg_object)
+        next_terminals_w_history_copy = deepcopy(next_terminals_w_history)
+
+        for symbol_prev, hist_prev in next_terminals_w_history_copy.items():
+            cfg_object_copy.get_next_terminals(hist_prev, symbol_prev)
+            next_terminals_w_history_out = cfg_object_copy.next_terminals_w_history
+            proposal = _get_paths_if_valid_single_token(
+                symbol_prev, next_terminals_w_history_out, encoder
+            )
+            # Search for the next combinations.
+            if proposal:
+                proposals.update(proposal)
+                recurse_update(proposal)
+
+    # Get `next_terminals_w_history`.
+    next_terminals_w_history = cfg_object.next_terminals_w_history
+    # Run.
+    recurse_update(next_terminals_w_history)
+    # Update `cfg_generation_state`.
+    next_terminals_w_history.update(proposals)
+
+    return next_terminals_w_history
