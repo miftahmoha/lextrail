@@ -10,6 +10,10 @@ class InvalidDelimiters(Exception):
     pass
 
 
+class MissingQuote(Exception):
+    pass
+
+
 class InvalidGrammar(Exception):
     pass
 

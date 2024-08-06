@@ -48,7 +48,6 @@ def _convert_to_lark_syntax(custom_syntax: str):
 
         parts = _separate_regex_substrings(line)
         lark_line: list[str] = []
-        # print(parts)
         for part in parts:
             if 'Regex("' in part:
                 start = part.index('Regex("') + len('Regex("')

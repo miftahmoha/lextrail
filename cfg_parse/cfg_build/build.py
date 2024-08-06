@@ -5,7 +5,7 @@ from cfg_parse.cfg_build.helpers import (
     _convert_str_def_to_str_queue,
     _convert_str_to_symbol,
     _discard_single_nodes_from_tree,
-    _get_symbol_from_content_attr,
+    _get_symbol_from_content_attr_for_seq,
     _get_symbol_predecessors,
     _tree_contains_eos_symbol,
 )
@@ -27,12 +27,12 @@ def construct_symbol_subgraph(
     # Add the node to the symbol graph.
     symbol_graph.tree[initial]
 
-    # Single node
+    # Single node.
     if len(symbols_str) == 1:
         symbol_graph.initials, symbol_graph.finals = OrderedSet([initial]), OrderedSet(
             [initial]
         )
-        # Node without connections
+        # Node without connections.
         symbol_graph.tree[initial]
         return symbol_graph
 
@@ -47,7 +47,7 @@ def construct_symbol_subgraph(
         if symbol_previous in symbol_graph.finals:
             # Add the node to the initials.
             symbol_graph.initials.add(node)
-            # Add the node to the symbol graph
+            # Add the node to the symbol graph.
             symbol_graph.tree[node]
             symbol_previous = node
             continue
@@ -143,7 +143,7 @@ def union_symbol_graph(
     if _tree_contains_eos_symbol(
         symbol_graph_lhs_copy.initials
     ) and _tree_contains_eos_symbol(symbol_graph_rhs_copy.initials):
-        symbol_special_eos_symbol = _get_symbol_from_content_attr(
+        symbol_special_eos_symbol = _get_symbol_from_content_attr_for_seq(
             symbol_graph_rhs_copy.initials, "EOS_SYMBOL"
         )
         symbol_graph_rhs_copy.initials.discard(symbol_special_eos_symbol[0])
