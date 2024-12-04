@@ -9,7 +9,10 @@ from matplotlib.animation import FuncAnimation
 from matplotlib.widgets import TextBox
 
 from cfg_parse.base import CFGStatefulGraph, Symbol, SymbolGraph, SymbolType
-from cfg_parse.cfg_build.helpers import _get_symbols_from_generated_symbol_graph
+from cfg_parse.cfg_build.helpers import (
+    _get_symbols_from_generated_symbol_graph,
+    _is_end_def_symbol,
+)
 from cfg_parse.cfg_guide.guide import CFGGenerationState, CFGGuide
 from cfg_parse.cfg_guide.helpers import (
     _get_next_terminal_symbols_as_regex,
@@ -66,7 +69,9 @@ def _setup_symbol_graph_networkx(
             for symbol in symbols.values()
         ]
     elif (
-        highlight.s_type == SymbolType.TERMINAL or highlight.s_type == SymbolType.REGEX
+        highlight.s_type == SymbolType.TERMINAL
+        or highlight.s_type == SymbolType.REGEX
+        or _is_end_def_symbol(highlight)
     ):
         node_color = [
             "orange" if (symbol == highlight) else "lightblue"
@@ -117,7 +122,7 @@ class _MockLLM:
     # Use `exrex` to generate a sample from a REGEX expression.
     def get_choice(self, regex_str: str) -> str:
         choice = exrex.getone(regex_str)
-        if choice == "EOS_SYMBOL":
+        if choice == "END_DEF":
             return choice
         self.response += choice[1:-1]
         return choice

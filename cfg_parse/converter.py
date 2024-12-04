@@ -17,16 +17,16 @@ def _map_opening_delim_idx_to_its_enclosing_delim_idx(
     raise InvalidDelimiters("No matching closing parenthesis found")
 
 
-# Separates the Regex(...) expressions from the other parts of the definition.
+# Separates the regex(...) expressions from the other parts of the definition.
 def _separate_regex_substrings(definition: str) -> list[str]:
     parts: list[str] = []
 
-    while 'Regex("' in definition:
-        start = definition.index('Regex("')
+    while 'regex("' in definition:
+        start = definition.index('regex("')
         if start > 0:
             parts.append(definition[:start])
         end = _map_opening_delim_idx_to_its_enclosing_delim_idx(
-            definition, start + len('Regex("')
+            definition, start + len('regex("')
         )
         parts.append(definition[start : end + 1])
         definition = definition[end + 1 :]
@@ -49,12 +49,12 @@ def _convert_to_lark_syntax(custom_syntax: str):
         parts = _separate_regex_substrings(line)
         lark_line: list[str] = []
         for part in parts:
-            if 'Regex("' in part:
-                start = part.index('Regex("') + len('Regex("')
+            if 'regex("' in part:
+                start = part.index('regex("') + len('regex("')
                 end = _map_opening_delim_idx_to_its_enclosing_delim_idx(part, start) - 1
                 regex_content = part[start:end]
                 lark_subline = part.replace(
-                    f'Regex("{regex_content}")', f"/{regex_content}/"
+                    f'regex("{regex_content}")', f"/{regex_content}/"
                 )
                 lark_line.append(lark_subline)
             else:
