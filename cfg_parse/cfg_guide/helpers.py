@@ -17,6 +17,7 @@ from cfg_parse.cfg_build.helpers import (
     _convert_str_to_symbol,
     _get_symbol_predecessors,
     _insert_space_between_delimiters,
+    _is_end_def_symbol,
 )
 from cfg_parse.exceptions import (
     InfiniteLoop,
@@ -194,7 +195,8 @@ def _get_next_terminal_symbols_as_regex(
     regexes: list[str] = []
 
     for symbol in symbols:
-        if symbol.s_type == SymbolType.TERMINAL:
+        print(symbol)
+        if symbol.s_type == SymbolType.TERMINAL or _is_end_def_symbol(symbol):
             regexes.append(re.escape(symbol.content))
         elif symbol.s_type == SymbolType.REGEX:
             regexes.append(symbol.content)
@@ -224,7 +226,7 @@ def _retrace_symbol_obj_from_str(
         if symbol.s_type == SymbolType.REGEX:
             if _validate_regex(chosen_symbol_str, symbol.content):
                 chosen_symbols.append(symbol)
-        elif symbol.s_type == SymbolType.TERMINAL:
+        elif symbol.s_type == SymbolType.TERMINAL or _is_end_def_symbol(symbol):
             if symbol.content == chosen_symbol_str:
                 chosen_symbols.append(symbol)
         else:

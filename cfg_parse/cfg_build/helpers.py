@@ -15,8 +15,8 @@ def _convert_str_to_symbol(symbol_str: str) -> Symbol:
     if symbol_str.startswith('"') and symbol_str.endswith('"'):
         node = Symbol(symbol_str, SymbolType.TERMINAL)
 
-    elif symbol_str.startswith('Regex("') and symbol_str.endswith('")'):
-        # Index to strip `symbol` from `Regex()`.
+    elif symbol_str.startswith('regex("') and symbol_str.endswith('")'):
+        # Index to strip `symbol` from `regex()`.
         start = symbol_str.find("(")
         # [NOTE] Use a raw string.
         node = Symbol(symbol_str[start + 1 : -1], SymbolType.REGEX)
@@ -46,9 +46,13 @@ def _get_symbol_predecessors(
     return symbol_predecessors
 
 
-def _tree_contains_eos_symbol(symbol_graph_tree: OrderedSet[Symbol]) -> bool:
-    for symbol in symbol_graph_tree:
-        if symbol.content == "EOS_SYMBOL" and symbol.s_type == SymbolType.TERMINAL:
+def _is_end_def_symbol(symbol: Symbol):
+    return symbol.content == "END_DEF" and symbol.s_type == SymbolType.SPECIAL
+
+
+def _is_set_contains_end_def_symbol(ordered_set: OrderedSet[Symbol]) -> bool:
+    for symbol in ordered_set:
+        if symbol.content == "END_DEF" and symbol.s_type == SymbolType.SPECIAL:
             return True
     return False
 
@@ -70,10 +74,10 @@ def _discard_single_nodes_from_tree(
 
 
 def _get_symbol_from_content_attr_for_seq(
-    symbol_graph: OrderedSet[Symbol] | list[Symbol], content: str
+    ordered_set_or_list: OrderedSet[Symbol] | list[Symbol], content: str
 ) -> list[Symbol]:
     symbols = []
-    for symbol in symbol_graph:
+    for symbol in ordered_set_or_list:
         if symbol.content == content:
             symbols.append(symbol)
 
@@ -81,6 +85,23 @@ def _get_symbol_from_content_attr_for_seq(
         raise SymbolNotFound(f"No Symbol matching {content} was found.")
 
     return symbols
+
+
+def _get_once_initial_for_none_any_or_once_end_def_symbols(symbol_graph: SymbolGraph):
+    symbols: list[Symbol] = []
+    single_symbols: list[Symbol] = []
+
+    for symbol_initial in symbol_graph.initials:
+        if _is_end_def_symbol(symbol_initial):
+            single_symbols.append(symbol_initial)
+
+    for symbol_successors in symbol_graph.tree.values():
+        for symbol_successor in symbol_successors:
+            if _is_end_def_symbol(
+                symbol_successor
+            ) and symbol_successor not in symbols + list(symbol_graph.finals):
+                symbols.append(symbol_successor)
+    return symbols, single_symbols
 
 
 # Throws exception if delimiters are invalid.
@@ -136,7 +157,7 @@ def _is_valid_symbol_syntax(symbol_str: str) -> bool:
         )
 
     def _is_regex(symbol_str: str):
-        return symbol_str.startswith('Regex("') and symbol_str.endswith('")')
+        return symbol_str.startswith('regex("') and symbol_str.endswith('")')
 
     def _is_special_symbol(symbol_str: str):
         return symbol_str in "()[]{}|" and len(symbol_str) == 1
@@ -149,7 +170,7 @@ def _is_valid_symbol_syntax(symbol_str: str) -> bool:
     )
 
 
-# # This checks if the symbol's syntax is correct.
+# This checks if the symbol's syntax is correct.
 def _check_symbol_syntax(symbol_def_str: list[str]):
     for symbol_str in symbol_def_str:
         # 1) Check for symbol validity.
@@ -181,7 +202,7 @@ def _insert_space_between_delimiters(symbol_def_str: str) -> str:
             in_quote = not in_quote
             result.append(symbol_def_str[i])
 
-        elif symbol_def_str[i : i + 5] == "Regex":
+        elif symbol_def_str[i : i + 5] == "regex":
             in_regex = True
             result.append(symbol_def_str[i])
 
@@ -228,7 +249,7 @@ def _split_symbols(symbol_def_str: str) -> list[str]:
         current_character = symbol_def_str[i]
 
         # Dealing with REGEX expressions.
-        if symbol_def_str[i - 5 : i + 2] == 'Regex("':
+        if symbol_def_str[i - 5 : i + 2] == 'regex("':
             current.append(current_character)
             in_regex = not in_regex
 

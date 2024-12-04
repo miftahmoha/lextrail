@@ -5,6 +5,7 @@ from typing import Deque, Optional
 
 from cfg_parse.base import CFGStatefulGraph, Symbol, SymbolGraph, SymbolType
 from cfg_parse.cfg_build.build import build_symbol_graph
+from cfg_parse.cfg_build.helpers import _is_end_def_symbol
 from cfg_parse.cfg_guide.helpers import (
     _check_for_potential_infinite_loops,
     _divide_cfg_grammar_into_definitions,
@@ -103,7 +104,10 @@ class CFGGuide:
             return
 
         for next_symbol in next_symbols:
-            if next_symbol.s_type in [SymbolType.TERMINAL, SymbolType.REGEX]:
+            if next_symbol.s_type in [
+                SymbolType.TERMINAL,
+                SymbolType.REGEX,
+            ] or _is_end_def_symbol(next_symbol):
                 # Pass by value, not by reference.
                 updated_generation_state = deepcopy(generation_state)
                 # Set state to the last visited symbol.
