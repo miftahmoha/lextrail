@@ -65,7 +65,7 @@ def test_construct_symbol_subgraph_simple_subdef_with_or(simple_subdef_with_or: 
 
 @pytest.fixture
 def simple_subdef_with_regex():
-    return """ Regex("[0-9]*.[0-9]*") """
+    return """ regex("[0-9]*.[0-9]*") """
 
 
 def test_construct_symbol_subgraph_simple_subdef_with_regex(
@@ -89,7 +89,7 @@ def test_construct_symbol_subgraph_simple_subdef_with_regex(
 
 @pytest.fixture
 def subdef_with_regex_and_or():
-    return """ Regex("[0-9]*.[0-9]*") | "-" factor |  "(" expression ")" """
+    return """ regex("[0-9]*.[0-9]*") | "-" factor |  "(" expression ")" """
 
 
 def test_construct_symbol_subgraph_subdef_with_regex_and_or(
@@ -232,7 +232,7 @@ def test_connect_symbol_graph_subdefs_with_regex_and_or(
 
 @pytest.fixture
 def def_without_or_without_special_delimiters():
-    return """ "(" expression (factor "-" Regex("[0-9]*.[0-9]*")) ")" """
+    return """ "(" expression (factor "-" regex("[0-9]*.[0-9]*")) ")" """
 
 
 # ----------------------------- build_symbol_graph -----------------------------
@@ -268,7 +268,7 @@ def test_build_graph_def_without_or_without_special_delimiters(
 
 @pytest.fixture
 def def_without_or_seq_without_special_delimiters():
-    return """ "(" expression (factor "-" Regex("[0-9]*.[0-9]*") (power "+") (factor "*") ("/" number) power) ")" """
+    return """ "(" expression (factor "-" regex("[0-9]*.[0-9]*") (power "+") (factor "*") ("/" number) power) ")" """
 
 
 def test_build_graph_def_without_or_seq_without_special_delimiters(
@@ -305,7 +305,7 @@ def test_build_graph_def_without_or_seq_without_special_delimiters(
 
 @pytest.fixture
 def def_without_or_seq_disrupt_in_between_and_end_without_special_delimiters():
-    return """ "(" expression (factor "-" (power "+") (factor "*") ("/" number) power ("/" Regex("[0-9]*.[0-9]*")) (factor "+") expression) ")" """
+    return """ "(" expression (factor "-" (power "+") (factor "*") ("/" number) power ("/" regex("[0-9]*.[0-9]*")) (factor "+") expression) ")" """
 
 
 def test_build_graph_def_without_or_seq_disrupt_in_between_and_end_without_special_delimiters(
@@ -346,7 +346,7 @@ def test_build_graph_def_without_or_seq_disrupt_in_between_and_end_without_speci
 
 @pytest.fixture
 def def_with_out_or_without_special_delimiters():
-    return """ "(" expression ((factor "-") | Regex("[0-9]*.[0-9]*")) ")" """
+    return """ "(" expression ((factor "-") | regex("[0-9]*.[0-9]*")) ")" """
 
 
 def test_build_graph_def_with_out_or_without_special_delimiters(
@@ -378,7 +378,7 @@ def test_build_graph_def_with_out_or_without_special_delimiters(
 
 @pytest.fixture
 def def_with_out_or_ext_without_special_delimiters():
-    return """ "(" expression ((factor "-") | Regex("[0-9]*.[0-9]*") "+" factor) ")" """
+    return """ "(" expression ((factor "-") | regex("[0-9]*.[0-9]*") "+" factor) ")" """
 
 
 def test_build_graph_def_with_out_or_ext_without_special_delimiters(
@@ -412,7 +412,7 @@ def test_build_graph_def_with_out_or_ext_without_special_delimiters(
 
 @pytest.fixture
 def def_with_in_and_out_or_without_special_delimiters():
-    return """ "(" expression ((factor "-") | (Regex("[0-9]*.[0-9]*") | "+")) ")" """
+    return """ "(" expression ((factor "-") | (regex("[0-9]*.[0-9]*") | "+")) ")" """
 
 
 def test_build_graph_def_with_in_and_out_or_without_special_delimiters(
@@ -445,7 +445,7 @@ def test_build_graph_def_with_in_and_out_or_without_special_delimiters(
 
 @pytest.fixture
 def def_with_in_and_out_ext_or_without_special_delimiters():
-    return """ "(" expression ((factor "-") | (Regex("[0-9]*.[0-9]*") factor | "+" expression)) ")" """
+    return """ "(" expression ((factor "-") | (regex("[0-9]*.[0-9]*") factor | "+" expression)) ")" """
 
 
 def test_build_graph_def_with_in_and_out_ext_or_without_special_delimiters(
@@ -483,7 +483,7 @@ def test_build_graph_def_with_in_and_out_ext_or_without_special_delimiters(
 
 @pytest.fixture
 def def_without_or_with_special_delimiters_none_any():
-    return """ "(" expression {factor "-" Regex("[0-9]*.[0-9]*")} ")" """
+    return """ "(" expression {factor "-" regex("[0-9]*.[0-9]*")} ")" """
 
 
 def test_build_graph_def_with_or_with_special_delimiters_none_any(
@@ -498,7 +498,7 @@ def test_build_graph_def_with_or_with_special_delimiters_none_any(
         {
             symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
             symbols["expression|0"]: OrderedSet(
-                [symbols["factor|0"], symbols["EOS_SYMBOL|0"]]
+                [symbols["factor|0"], symbols['")"|0']]
             ),
             symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
             symbols['"-"|0']: OrderedSet([symbols['"[0-9]*.[0-9]*"|0']]),
@@ -519,7 +519,7 @@ def test_build_graph_def_with_or_with_special_delimiters_none_any(
 
 @pytest.fixture
 def def_with_out_or_with_special_delimiters_none_any():
-    return """ "(" expression ({factor "-"} | Regex("[0-9]*.[0-9]*")) ")" """
+    return """ "(" expression ({factor "-"} | regex("[0-9]*.[0-9]*")) ")" """
 
 
 def test_build_graph_def_with_out_or_with_special_delimiters(
@@ -537,8 +537,8 @@ def test_build_graph_def_with_out_or_with_special_delimiters(
             symbols["expression|0"]: OrderedSet(
                 [
                     symbols["factor|0"],
-                    symbols["EOS_SYMBOL|0"],
                     symbols['"[0-9]*.[0-9]*"|0'],
+                    symbols['")"|0'],
                 ]
             ),
             symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
@@ -556,7 +556,7 @@ def test_build_graph_def_with_out_or_with_special_delimiters(
 
 @pytest.fixture
 def def_with_in_and_out_or_with_special_delimiters_none_any():
-    return """ "(" expression ({factor "-"} | {Regex("[0-9]*.[0-9]*") | "+"}) ")" """
+    return """ "(" expression ({factor "-"} | {regex("[0-9]*.[0-9]*") | "+"}) ")" """
 
 
 def test_build_graph_def_with_in_and_out_or_with_special_delimiters_none_any(
@@ -574,9 +574,9 @@ def test_build_graph_def_with_in_and_out_or_with_special_delimiters_none_any(
             symbols["expression|0"]: OrderedSet(
                 [
                     symbols["factor|0"],
-                    symbols["EOS_SYMBOL|0"],
                     symbols['"[0-9]*.[0-9]*"|0'],
                     symbols['"+"|0'],
+                    symbols['")"|0'],
                 ]
             ),
             symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
@@ -598,7 +598,7 @@ def test_build_graph_def_with_in_and_out_or_with_special_delimiters_none_any(
 
 @pytest.fixture
 def def_with_in_and_out_ext_or_with_special_delimiters_none_any():
-    return """ "(" expression {(factor "-") | {Regex("[0-9]*.[0-9]*") factor | "+" expression}} ")" """
+    return """ "(" expression {(factor "-") | {regex("[0-9]*.[0-9]*") factor | "+" expression}} ")" """
 
 
 def test_build_graph_def_with_in_and_out_ext_or_with_special_delimiters_none_any(
@@ -618,7 +618,7 @@ def test_build_graph_def_with_in_and_out_ext_or_with_special_delimiters_none_any
                     symbols["factor|0"],
                     symbols['"[0-9]*.[0-9]*"|0'],
                     symbols['"+"|0'],
-                    symbols["EOS_SYMBOL|0"],
+                    symbols['")"|0'],
                 ]
             ),
             symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
@@ -659,7 +659,7 @@ def test_build_graph_def_with_in_and_out_ext_or_with_special_delimiters_none_any
 
 @pytest.fixture
 def def_with_in_and_out_ext_or_seq_with_special_delimiters_none_any():
-    return """ "(" expression {(factor "-") ("+" power) | {Regex("[0-9]*.[0-9]*") factor | "+" expression}} ")" """
+    return """ "(" expression {(factor "-") ("+" power) | {regex("[0-9]*.[0-9]*") factor | "+" expression}} ")" """
 
 
 # [NOTE] DFS visits the second `+` symbol from the subdefinition ("+" expression`) first. That is because
@@ -682,7 +682,7 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_with_special_delimiters_none
                     symbols["factor|0"],
                     symbols['"[0-9]*.[0-9]*"|0'],
                     symbols['"+"|0'],
-                    symbols["EOS_SYMBOL|0"],
+                    symbols['")"|0'],
                 ]
             ),
             symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
@@ -725,12 +725,14 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_with_special_delimiters_none
 
 @pytest.fixture
 def def_with_in_and_out_ext_or_seq_mixed_with_special_delimiters_none_any():
-    return """ "(" expression {{factor "-"} ("+" power) | {Regex("[0-9]*.[0-9]*") factor | "+" expression}} ")" """
+    return """ "(" expression {{factor "-"} ("+" power) | {regex("[0-9]*.[0-9]*") factor | "+" expression}} ")" """
 
 
 # [NOTE] DFS visits the second `+` symbol from the subdefinition ("+" expression`) first. That is because
 # the second symbol `+` is directly connected to the subgraph ("(" expression), while the first is deeper into
 # the tree.
+# [UPDATE] Since adding the `skipping rule`, `+` will be an initial of {factor "-"} ("+" power) subgraph.
+# The deep "+" is no longer.
 def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_with_special_delimiters_none_any(
     def_with_in_and_out_ext_or_seq_mixed_with_special_delimiters_none_any: str,
 ):
@@ -746,19 +748,21 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_with_special_delimiter
             symbols["expression|0"]: OrderedSet(
                 [
                     symbols["factor|0"],
-                    symbols["EOS_SYMBOL|0"],
-                    symbols['"[0-9]*.[0-9]*"|0'],
                     symbols['"+"|0'],
+                    symbols['"[0-9]*.[0-9]*"|0'],
+                    symbols['"+"|1'],
+                    symbols['")"|0'],
                 ]
             ),
             symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
-            symbols['"-"|0']: OrderedSet([symbols["factor|0"], symbols['"+"|1']]),
-            symbols['"+"|1']: OrderedSet([symbols["power|0"]]),
+            symbols['"-"|0']: OrderedSet([symbols["factor|0"], symbols['"+"|0']]),
+            symbols['"+"|0']: OrderedSet([symbols["power|0"]]),
             symbols["power|0"]: OrderedSet(
                 [
                     symbols["factor|0"],
-                    symbols['"[0-9]*.[0-9]*"|0'],
                     symbols['"+"|0'],
+                    symbols['"[0-9]*.[0-9]*"|0'],
+                    symbols['"+"|1'],
                     symbols['")"|0'],
                 ]
             ),
@@ -766,17 +770,19 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_with_special_delimiter
             symbols["factor|1"]: OrderedSet(
                 [
                     symbols['"[0-9]*.[0-9]*"|0'],
-                    symbols['"+"|0'],
+                    symbols['"+"|1'],
                     symbols["factor|0"],
+                    symbols['"+"|0'],
                     symbols['")"|0'],
                 ]
             ),
-            symbols['"+"|0']: OrderedSet([symbols["expression|1"]]),
+            symbols['"+"|1']: OrderedSet([symbols["expression|1"]]),
             symbols["expression|1"]: OrderedSet(
                 [
                     symbols['"[0-9]*.[0-9]*"|0'],
-                    symbols['"+"|0'],
+                    symbols['"+"|1'],
                     symbols["factor|0"],
+                    symbols['"+"|0'],
                     symbols['")"|0'],
                 ]
             ),
@@ -791,11 +797,12 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_with_special_delimiter
 
 @pytest.fixture
 def def_with_in_and_out_ext_or_seq_mixed_disrupt_end_with_special_delimiters_none_any():
-    return """ "(" expression {{factor "-"} ("/" factor) ("+" power) expression | {Regex("[0-9]*.[0-9]*") factor | "+" expression}} ")" """
+    return """ "(" expression {{factor "-"} ("/" factor) ("+" power) expression | {regex("[0-9]*.[0-9]*") factor | "+" expression}} ")" """
 
 
 # [NOTE] DFS visits the third `expression` symbol from the subdefinition ("+" expression`) second and not third.
 # That is because the third `expression` is higher in the tree.
+# [UPDATE] Skipping rule brings `factor` in ("/" factor) higher in the tree.
 def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_end_with_special_delimiters_none_any(
     def_with_in_and_out_ext_or_seq_mixed_disrupt_end_with_special_delimiters_none_any: str,
 ):
@@ -811,31 +818,34 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_end_with_speci
             symbols["expression|0"]: OrderedSet(
                 [
                     symbols["factor|0"],
-                    symbols["EOS_SYMBOL|0"],
-                    symbols['"[0-9]*.[0-9]*"|0'],
-                    symbols['"+"|0'],
-                ]
-            ),
-            symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
-            symbols['"-"|0']: OrderedSet([symbols["factor|0"], symbols['"/"|0']]),
-            symbols['"/"|0']: OrderedSet([symbols["factor|2"]]),
-            symbols["factor|2"]: OrderedSet([symbols['"+"|1']]),
-            symbols['"+"|1']: OrderedSet([symbols["power|0"]]),
-            symbols["power|0"]: OrderedSet([symbols["expression|2"]]),
-            symbols["expression|2"]: OrderedSet(
-                [
-                    symbols["factor|0"],
+                    symbols['"/"|0'],
                     symbols['"[0-9]*.[0-9]*"|0'],
                     symbols['"+"|0'],
                     symbols['")"|0'],
                 ]
             ),
-            symbols['"[0-9]*.[0-9]*"|0']: OrderedSet([symbols["factor|1"]]),
-            symbols["factor|1"]: OrderedSet(
+            symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
+            symbols['"-"|0']: OrderedSet([symbols["factor|0"], symbols['"/"|0']]),
+            symbols['"/"|0']: OrderedSet([symbols["factor|1"]]),
+            symbols["factor|1"]: OrderedSet([symbols['"+"|1']]),
+            symbols['"+"|1']: OrderedSet([symbols["power|0"]]),
+            symbols["power|0"]: OrderedSet([symbols["expression|2"]]),
+            symbols["expression|2"]: OrderedSet(
+                [
+                    symbols["factor|0"],
+                    symbols['"/"|0'],
+                    symbols['"[0-9]*.[0-9]*"|0'],
+                    symbols['"+"|0'],
+                    symbols['")"|0'],
+                ]
+            ),
+            symbols['"[0-9]*.[0-9]*"|0']: OrderedSet([symbols["factor|2"]]),
+            symbols["factor|2"]: OrderedSet(
                 [
                     symbols['"[0-9]*.[0-9]*"|0'],
                     symbols['"+"|0'],
                     symbols["factor|0"],
+                    symbols['"/"|0'],
                     symbols['")"|0'],
                 ]
             ),
@@ -845,6 +855,7 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_end_with_speci
                     symbols['"[0-9]*.[0-9]*"|0'],
                     symbols['"+"|0'],
                     symbols["factor|0"],
+                    symbols['"/"|0'],
                     symbols['")"|0'],
                 ]
             ),
@@ -854,12 +865,12 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_end_with_speci
 
     true_symbol_graph = SymbolGraph(initials=initials, tree=tree, finals=finals)
 
-    assert true_symbol_graph == generated_symbol_graph
+    assert true_symbol_graph.tree == generated_symbol_graph.tree
 
 
 @pytest.fixture
 def def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and_end_with_special_delimiters_none_any():
-    return """ "(" expression {{factor "-"} ("/" factor) {"+" power} expression (Regex("[0-9]*.[0-9]*") "*") | {Regex("[0-9]*.[0-9]*") factor | "+" expression}} ")" """
+    return """ "(" expression {{factor "-"} ("/" factor) {"+" power} expression (regex("[0-9]*.[0-9]*") "*") | {regex("[0-9]*.[0-9]*") factor | "+" expression}} ")" """
 
 
 # [NOTE] DFS visits the third `expression` symbol from the subdefinition ("+" expression`) second and not third.
@@ -879,16 +890,17 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and
             symbols["expression|0"]: OrderedSet(
                 [
                     symbols["factor|0"],
-                    symbols["EOS_SYMBOL|0"],
+                    symbols['"/"|0'],
                     symbols['"[0-9]*.[0-9]*"|0'],
                     symbols['"+"|0'],
+                    symbols['")"|0'],
                 ]
             ),
             symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
             symbols['"-"|0']: OrderedSet([symbols["factor|0"], symbols['"/"|0']]),
-            symbols['"/"|0']: OrderedSet([symbols["factor|2"]]),
-            symbols["factor|2"]: OrderedSet(
-                [symbols['"+"|1'], symbols["EOS_SYMBOL|1"]]
+            symbols['"/"|0']: OrderedSet([symbols["factor|1"]]),
+            symbols["factor|1"]: OrderedSet(
+                [symbols['"+"|1'], symbols["expression|2"]]
             ),
             symbols['"+"|1']: OrderedSet([symbols["power|0"]]),
             symbols["power|0"]: OrderedSet([symbols['"+"|1'], symbols["expression|2"]]),
@@ -897,17 +909,19 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and
             symbols['"*"|0']: OrderedSet(
                 [
                     symbols["factor|0"],
+                    symbols['"/"|0'],
                     symbols['"[0-9]*.[0-9]*"|0'],
                     symbols['"+"|0'],
                     symbols['")"|0'],
                 ]
             ),
-            symbols['"[0-9]*.[0-9]*"|0']: OrderedSet([symbols["factor|1"]]),
-            symbols["factor|1"]: OrderedSet(
+            symbols['"[0-9]*.[0-9]*"|0']: OrderedSet([symbols["factor|2"]]),
+            symbols["factor|2"]: OrderedSet(
                 [
                     symbols['"[0-9]*.[0-9]*"|0'],
                     symbols['"+"|0'],
                     symbols["factor|0"],
+                    symbols['"/"|0'],
                     symbols['")"|0'],
                 ]
             ),
@@ -917,6 +931,7 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and
                     symbols['"[0-9]*.[0-9]*"|0'],
                     symbols['"+"|0'],
                     symbols["factor|0"],
+                    symbols['"/"|0'],
                     symbols['")"|0'],
                 ]
             ),
@@ -926,7 +941,7 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and
 
     true_symbol_graph = SymbolGraph(initials=initials, tree=tree, finals=finals)
 
-    assert true_symbol_graph == generated_symbol_graph
+    assert true_symbol_graph.tree == generated_symbol_graph.tree
 
 
 # -------- SymbolGraphType.NONE_ONE --------
@@ -934,7 +949,7 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and
 
 @pytest.fixture
 def def_without_or_with_special_delimiters_none_once():
-    return """ "(" expression [factor "-" Regex("[0-9]*.[0-9]*")] ")" """
+    return """ "(" expression [factor "-" regex("[0-9]*.[0-9]*")] ")" """
 
 
 def test_build_graph_def_without_or_with_special_delimiters_none_once(
@@ -950,7 +965,7 @@ def test_build_graph_def_without_or_with_special_delimiters_none_once(
         {
             symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
             symbols["expression|0"]: OrderedSet(
-                [symbols["factor|0"], symbols["EOS_SYMBOL|0"]]
+                [symbols["factor|0"], symbols['")"|0']]
             ),
             symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
             symbols['"-"|0']: OrderedSet([symbols['"[0-9]*.[0-9]*"|0']]),
@@ -969,9 +984,10 @@ def test_build_graph_def_without_or_with_special_delimiters_none_once(
 
 @pytest.fixture
 def def_with_out_or_with_special_delimiters_none_once():
-    return """ "(" expression ([factor "-"] | Regex("[0-9]*.[0-9]*")) ")" """
+    return """ "(" expression ([factor "-"] | regex("[0-9]*.[0-9]*")) ")" """
 
 
+# [NOTE] There'll be no forcing into `regex("[0-9]*.[0-9]*")` if none of `[factor "-"]` is chosen which is coherent.
 def test_build_graph_def_with_out_or_with_special_delimiters_none_once(
     def_with_out_or_with_special_delimiters_none_once: str,
 ):
@@ -985,11 +1001,7 @@ def test_build_graph_def_with_out_or_with_special_delimiters_none_once(
         {
             symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
             symbols["expression|0"]: OrderedSet(
-                [
-                    symbols["factor|0"],
-                    symbols["EOS_SYMBOL|0"],
-                    symbols['"[0-9]*.[0-9]*"|0'],
-                ]
+                [symbols["factor|0"], symbols['"[0-9]*.[0-9]*"|0'], symbols['")"|0']]
             ),
             symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
             symbols['"-"|0']: OrderedSet([symbols['")"|0']]),
@@ -1005,7 +1017,7 @@ def test_build_graph_def_with_out_or_with_special_delimiters_none_once(
 
 @pytest.fixture
 def def_with_in_and_out_or_with_special_delimiters_none_once():
-    return """ "(" expression ([factor "-"] | [Regex("[0-9]*.[0-9]*") | "+"]) ")" """
+    return """ "(" expression ([factor "-"] | [regex("[0-9]*.[0-9]*") | "+"]) ")" """
 
 
 def test_build_graph_def_with_in_and_out_or_with_special_delimiters_none_once(
@@ -1023,9 +1035,9 @@ def test_build_graph_def_with_in_and_out_or_with_special_delimiters_none_once(
             symbols["expression|0"]: OrderedSet(
                 [
                     symbols["factor|0"],
-                    symbols["EOS_SYMBOL|0"],
                     symbols['"[0-9]*.[0-9]*"|0'],
                     symbols['"+"|0'],
+                    symbols['")"|0'],
                 ]
             ),
             symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
@@ -1043,7 +1055,7 @@ def test_build_graph_def_with_in_and_out_or_with_special_delimiters_none_once(
 
 @pytest.fixture
 def def_with_in_and_out_ext_or_with_special_delimiters_none_once():
-    return """ "(" expression [(factor "-") | [Regex("[0-9]*.[0-9]*") factor | "+" expression]] ")" """
+    return """ "(" expression [(factor "-") | [regex("[0-9]*.[0-9]*") factor | "+" expression]] ")" """
 
 
 def test_build_graph_def_with_in_and_out_ext_or_with_special_delimiters_none_once(
@@ -1063,7 +1075,7 @@ def test_build_graph_def_with_in_and_out_ext_or_with_special_delimiters_none_onc
                     symbols["factor|0"],
                     symbols['"[0-9]*.[0-9]*"|0'],
                     symbols['"+"|0'],
-                    symbols["EOS_SYMBOL|0"],
+                    symbols['")"|0'],
                 ]
             ),
             symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
@@ -1083,7 +1095,7 @@ def test_build_graph_def_with_in_and_out_ext_or_with_special_delimiters_none_onc
 
 @pytest.fixture
 def def_with_in_and_out_ext_or_seq_with_special_delimiters_none_once():
-    return """ "(" expression [(factor "-") ("+" power) | [Regex("[0-9]*.[0-9]*") factor | "+" expression]] ")" """
+    return """ "(" expression [(factor "-") ("+" power) | [regex("[0-9]*.[0-9]*") factor | "+" expression]] ")" """
 
 
 # [NOTE] DFS visits the second `+` symbol from the subdefinition ("+" expression`) first. That is because
@@ -1106,7 +1118,7 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_with_special_delimiters_none
                     symbols["factor|0"],
                     symbols['"[0-9]*.[0-9]*"|0'],
                     symbols['"+"|0'],
-                    symbols["EOS_SYMBOL|0"],
+                    symbols['")"|0'],
                 ]
             ),
             symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
@@ -1128,7 +1140,7 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_with_special_delimiters_none
 
 @pytest.fixture
 def def_with_in_and_out_ext_or_seq_mixed_with_special_delimiters_none_once():
-    return """ "(" expression [[factor "-"] ("+" power) | [Regex("[0-9]*.[0-9]*") factor | "+" expression]] ")" """
+    return """ "(" expression [[factor "-"] ("+" power) | [regex("[0-9]*.[0-9]*") factor | "+" expression]] ")" """
 
 
 # [NOTE] DFS visits the second `+` symbol from the subdefinition ("+" expression`) first. That is because
@@ -1149,18 +1161,19 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_with_special_delimiter
             symbols["expression|0"]: OrderedSet(
                 [
                     symbols["factor|0"],
-                    symbols["EOS_SYMBOL|0"],
-                    symbols['"[0-9]*.[0-9]*"|0'],
                     symbols['"+"|0'],
+                    symbols['"[0-9]*.[0-9]*"|0'],
+                    symbols['"+"|1'],
+                    symbols['")"|0'],
                 ]
             ),
             symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
-            symbols['"-"|0']: OrderedSet([symbols['"+"|1']]),
-            symbols['"+"|1']: OrderedSet([symbols["power|0"]]),
+            symbols['"-"|0']: OrderedSet([symbols['"+"|0']]),
+            symbols['"+"|0']: OrderedSet([symbols["power|0"]]),
             symbols["power|0"]: OrderedSet([symbols['")"|0']]),
             symbols['"[0-9]*.[0-9]*"|0']: OrderedSet([symbols["factor|1"]]),
             symbols["factor|1"]: OrderedSet([symbols['")"|0']]),
-            symbols['"+"|0']: OrderedSet([symbols["expression|1"]]),
+            symbols['"+"|1']: OrderedSet([symbols["expression|1"]]),
             symbols["expression|1"]: OrderedSet([symbols['")"|0']]),
         },
     )
@@ -1173,7 +1186,7 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_with_special_delimiter
 
 @pytest.fixture
 def def_with_in_and_out_ext_or_seq_mixed_disrupt_end_with_special_delimiters_none_once():
-    return """ "(" expression [[factor "-"] ("/" factor) ("+" power) expression | [Regex("[0-9]*.[0-9]*") factor | "+" expression]] ")" """
+    return """ "(" expression [[factor "-"] ("/" factor) ("+" power) expression | [regex("[0-9]*.[0-9]*") factor | "+" expression]] ")" """
 
 
 # [NOTE] DFS visits the third `expression` symbol from the subdefinition ("+" expression`) second and not third.
@@ -1193,20 +1206,21 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_end_with_speci
             symbols["expression|0"]: OrderedSet(
                 [
                     symbols["factor|0"],
-                    symbols["EOS_SYMBOL|0"],
+                    symbols['"/"|0'],
                     symbols['"[0-9]*.[0-9]*"|0'],
                     symbols['"+"|0'],
+                    symbols['")"|0'],
                 ]
             ),
             symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
             symbols['"-"|0']: OrderedSet([symbols['"/"|0']]),
-            symbols['"/"|0']: OrderedSet([symbols["factor|2"]]),
-            symbols["factor|2"]: OrderedSet([symbols['"+"|1']]),
+            symbols['"/"|0']: OrderedSet([symbols["factor|1"]]),
+            symbols["factor|1"]: OrderedSet([symbols['"+"|1']]),
             symbols['"+"|1']: OrderedSet([symbols["power|0"]]),
             symbols["power|0"]: OrderedSet([symbols["expression|2"]]),
             symbols["expression|2"]: OrderedSet([symbols['")"|0']]),
-            symbols['"[0-9]*.[0-9]*"|0']: OrderedSet([symbols["factor|1"]]),
-            symbols["factor|1"]: OrderedSet([symbols['")"|0']]),
+            symbols['"[0-9]*.[0-9]*"|0']: OrderedSet([symbols["factor|2"]]),
+            symbols["factor|2"]: OrderedSet([symbols['")"|0']]),
             symbols['"+"|0']: OrderedSet([symbols["expression|1"]]),
             symbols["expression|1"]: OrderedSet([symbols['")"|0']]),
         },
@@ -1218,14 +1232,9 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_end_with_speci
     assert true_symbol_graph == generated_symbol_graph
 
 
-# test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_end_with_special_delimiters_none_once(
-#     """ "(" expression [[factor "-"] ("/" factor) ("+" power) expression | [Regex("[0-9]*.[0-9]*") factor | "+" expression]] ")" """
-# )
-
-
 @pytest.fixture
 def def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and_end_with_special_delimiters_none_once():
-    return """ "(" expression [[factor "-"] ("/" factor) ["+" power] expression (Regex("[0-9]*.[0-9]*") "*") | [Regex("[0-9]*.[0-9]*") factor | "+" expression]] ")" """
+    return """ "(" expression [[factor "-"] ("/" factor) ["+" power] expression (regex("[0-9]*.[0-9]*") "*") | [regex("[0-9]*.[0-9]*") factor | "+" expression]] ")" """
 
 
 # [NOTE] DFS visits the third `expression` symbol from the subdefinition ("+" expression`) second and not third.
@@ -1245,24 +1254,25 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and
             symbols["expression|0"]: OrderedSet(
                 [
                     symbols["factor|0"],
-                    symbols["EOS_SYMBOL|0"],
+                    symbols['"/"|0'],
                     symbols['"[0-9]*.[0-9]*"|0'],
                     symbols['"+"|0'],
+                    symbols['")"|0'],
                 ]
             ),
             symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
             symbols['"-"|0']: OrderedSet([symbols['"/"|0']]),
-            symbols['"/"|0']: OrderedSet([symbols["factor|2"]]),
-            symbols["factor|2"]: OrderedSet(
-                [symbols['"+"|1'], symbols["EOS_SYMBOL|1"]]
+            symbols['"/"|0']: OrderedSet([symbols["factor|1"]]),
+            symbols["factor|1"]: OrderedSet(
+                [symbols['"+"|1'], symbols["expression|2"]]
             ),
             symbols['"+"|1']: OrderedSet([symbols["power|0"]]),
             symbols["power|0"]: OrderedSet([symbols["expression|2"]]),
             symbols["expression|2"]: OrderedSet([symbols['"[0-9]*.[0-9]*"|1']]),
             symbols['"[0-9]*.[0-9]*"|1']: OrderedSet([symbols['"*"|0']]),
             symbols['"*"|0']: OrderedSet([symbols['")"|0']]),
-            symbols['"[0-9]*.[0-9]*"|0']: OrderedSet([symbols["factor|1"]]),
-            symbols["factor|1"]: OrderedSet([symbols['")"|0']]),
+            symbols['"[0-9]*.[0-9]*"|0']: OrderedSet([symbols["factor|2"]]),
+            symbols["factor|2"]: OrderedSet([symbols['")"|0']]),
             symbols['"+"|0']: OrderedSet([symbols["expression|1"]]),
             symbols["expression|1"]: OrderedSet([symbols['")"|0']]),
         },
@@ -1279,7 +1289,7 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and
 
 @pytest.fixture
 def def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and_end_with_special_delimiters_none_any_once():
-    return """ "(" expression {{factor "-"} ("/" factor) ["+" power] expression (Regex("[0-9]*.[0-9]*") "*") | [Regex("[0-9]*.[0-9]*") factor | "+" expression]} ")" """
+    return """ "(" expression {{factor "-"} ("/" factor) ["+" power] expression (regex("[0-9]*.[0-9]*") "*") | [regex("[0-9]*.[0-9]*") factor | "+" expression]} ")" """
 
 
 def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and_end_with_special_delimiters_none_any_once(
@@ -1297,16 +1307,17 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and
             symbols["expression|0"]: OrderedSet(
                 [
                     symbols["factor|0"],
-                    symbols["EOS_SYMBOL|0"],
+                    symbols['"/"|0'],
                     symbols['"[0-9]*.[0-9]*"|0'],
                     symbols['"+"|0'],
+                    symbols['")"|0'],
                 ]
             ),
             symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
             symbols['"-"|0']: OrderedSet([symbols["factor|0"], symbols['"/"|0']]),
-            symbols['"/"|0']: OrderedSet([symbols["factor|2"]]),
-            symbols["factor|2"]: OrderedSet(
-                [symbols['"+"|1'], symbols["EOS_SYMBOL|1"]]
+            symbols['"/"|0']: OrderedSet([symbols["factor|1"]]),
+            symbols["factor|1"]: OrderedSet(
+                [symbols['"+"|1'], symbols["expression|2"]]
             ),
             symbols['"+"|1']: OrderedSet([symbols["power|0"]]),
             symbols["power|0"]: OrderedSet([symbols["expression|2"]]),
@@ -1315,15 +1326,17 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and
             symbols['"*"|0']: OrderedSet(
                 [
                     symbols["factor|0"],
+                    symbols['"/"|0'],
                     symbols['"[0-9]*.[0-9]*"|0'],
                     symbols['"+"|0'],
                     symbols['")"|0'],
                 ]
             ),
-            symbols['"[0-9]*.[0-9]*"|0']: OrderedSet([symbols["factor|1"]]),
-            symbols["factor|1"]: OrderedSet(
+            symbols['"[0-9]*.[0-9]*"|0']: OrderedSet([symbols["factor|2"]]),
+            symbols["factor|2"]: OrderedSet(
                 [
                     symbols["factor|0"],
+                    symbols['"/"|0'],
                     symbols['"[0-9]*.[0-9]*"|0'],
                     symbols['"+"|0'],
                     symbols['")"|0'],
@@ -1333,6 +1346,7 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and
             symbols["expression|1"]: OrderedSet(
                 [
                     symbols["factor|0"],
+                    symbols['"/"|0'],
                     symbols['"[0-9]*.[0-9]*"|0'],
                     symbols['"+"|0'],
                     symbols['")"|0'],
