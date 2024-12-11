@@ -139,7 +139,7 @@ def format_w_exclusion(excluded: Optional[list[str]] = None):
         format_characters(ALL_CHARACTERS)
         if excluded
         else format_characters(
-            [char for char in ALL_CHARACTERS if char not in excluded]
+            [char for char in ALL_CHARACTERS if char not in excluded] # type: ignore
         )
     )
 
@@ -148,6 +148,9 @@ class DelimType(Enum):
     PARENTHESIS = 1
     BRACKETS = 2
     BRACES = 3
+
+
+delim_dict = {"(": DelimType.PARENTHESIS, "[": DelimType.BRACKETS, "{": DelimType.BRACES}
 
 
 # Finds out if some character is escaped.
@@ -164,6 +167,10 @@ def is_escaped(regex_str: str, index: int) -> bool:
 
 # [NOTE] Can use `re` package to validate the regex.
 # No need to check for parenthesis coherence and syntactic correctness.
+# [NOTE] Special characters inside `[]` are automatically escaped (apart from `[]` itself), nesting with `()` or `[]` is not allowed.
+# [ALERT] Adding another `[]` inside `[]` results in UNDEFINED BEHAVIOR, thus it must be ESCAPED by the USER. Unfortunately, `re` package will not help. A warning should be emitted. 
+# [NOTE] Could remove the CF `if current:` through removing empty strings in a following pass. 
+# [NOTE] Lookahead and Lookbehind are still not supported.
 def _split_regex(regex_str: str) -> list[str]:
     result = []
     current = []
@@ -175,13 +182,17 @@ def _split_regex(regex_str: str) -> list[str]:
 
         # Escaped regex delimiters `\\(` and `\\)` are ignored.
         if current_character in "()[]{}" and not is_escaped(regex_str, i - 1):
+            # [NOTE] Escaping `(){}` inside a `[]`, nested `[]` leads to UNDEFINED BEHAVIOR in `re`, thus it must be escaped by the user. 
+            if current_delimiter == DelimType.BRACKETS and current_character not in "[]":
+                # Escape all delimiters inside `[]`.
+                current.append(current_character)
+                i += 1
+                continue
+            # Leaving the scope.
+            if current_character in ")]}":
+                current_delimiter = None
             # Useful for detecting (range) character sets.
-            if current_character == "(":
-                current_delimiter = DelimType.PARENTHESIS
-            elif current_character == "[":
-                current_delimiter = DelimType.BRACKETS
-            else:
-                current_delimiter = DelimType.BRACES
+            current_delimiter = delim_dict.get(current_character, current_delimiter)
             # [NOTE] Could be optimized to avoid CF on every iteration.
             if current:
                 result.append("".join(current))
@@ -213,22 +224,40 @@ def _split_regex(regex_str: str) -> list[str]:
             continue
         # Dealing with quantifiers.
         elif current_character in "*+?" and regex_str[i - 1] in ")]}":
+            # [NOTE] Ignoring `*+?` as special characters inside a `[]`.
+            if current_delimiter == DelimType.BRACKETS:
+                current.append(current_character)
+                i += 1
+                continue
             result.append(current_character)
         # Dealing with character classes.
         elif current_character in "dDwWsS" and is_escaped(regex_str, i - 1):
+            # [NOTE] Ignoring `\d\D\w\W\s\S` as special characters inside a `[]`.
+            if current_delimiter == DelimType.BRACKETS:
+                current.append(current_character)
+                i += 1
+                continue
             result.append("".join(current[:-1]))
             result.append("".join([current[-1], current_character]))
             current.clear()
         # Dealing with special characters.
         elif current_character == "." and not is_escaped(regex_str, i - 1):
+            # [NOTE] Ignoring `.` as special character inside a `[]`.
+            if current_delimiter == DelimType.BRACKETS:
+                current.append(current_character)
+                i += 1
+                continue
             # Avoids adding empty strings.
             if current:
                 result.append("".join(current))
                 current.clear()
             result.append(current_character)
-        # Dealing with anchors, they're irrelevant in our context.
-        # [NOTE] If user asks for a `regex("example")` in a CFG, it is equivalent
+        # [???] Dealing with anchors, they're irrelevant in our context. CFGs are expected to have deterministic properties.
+        # [???] If user asks for a `regex("example")` in a CFG, it is equivalent
         # to regex("^example$").
+        elif current_character in "^" and regex_str[i-1] == "[" and not is_escaped(regex_str, i - 2):
+            # `current` should be empty.
+            result.append(current_character)
         elif current_character in "^$" and not is_escaped(regex_str, i - 1):
             i += 1
             continue
@@ -241,13 +270,28 @@ def _split_regex(regex_str: str) -> list[str]:
 
     return result
 
+# [NOTE] There is NO need to reason about negation of subexpressions such as [^abc] and [a^(subexp)bc],
+# (1) everything inside `[]` is literal and (2) `^` has only a meaning at the beggining of a `[]`. 
+# Cannonicalize 
+# (1) (range) Character sets. 
+# Example: [0-9] -> [0123456789].
+def cannonicalize(regex_chunks: list[str]):
+    i = 0
 
-def cannonicalize(regex_str: list[str]):
-    pass
+    while i < len(regex_chunks):
+        current_chunk: str = regex_chunks[i]
+
+        if current_chunk[0] == "\\" and current_chunk[1] in "dDwWsS":
+            if current_chunk[1] == "d":
+                pass
+            if current_chunk[1] == "D":
+                pass
+            if current_chunk[1] == "d":
+                pass
 
 
 def convert_regex_to_custom_syntax(regex: str):
     pass
 
 
-print(_split_regex(r"(^abc{2,4} [era-z.t*]  (f\wg)* \\\(lol\))"))
+print(_split_regex(r"(^abc{2,4}. [^era-z(testescape).t*] (f\wg)* \\\(lol\))"))
