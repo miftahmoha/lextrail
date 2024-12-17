@@ -865,7 +865,7 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_end_with_speci
 
     true_symbol_graph = SymbolGraph(initials=initials, tree=tree, finals=finals)
 
-    assert true_symbol_graph.tree == generated_symbol_graph.tree
+    assert true_symbol_graph == generated_symbol_graph
 
 
 @pytest.fixture
@@ -941,10 +941,156 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and
 
     true_symbol_graph = SymbolGraph(initials=initials, tree=tree, finals=finals)
 
-    assert true_symbol_graph.tree == generated_symbol_graph.tree
+    assert true_symbol_graph == generated_symbol_graph
 
 
-# -------- SymbolGraphType.NONE_ONE --------
+# -------- SymbolGraphType.ONCE_ANY --------
+
+
+@pytest.fixture
+def def_without_or_with_special_delimiters_once_any():
+    return """ "(" expression <factor "-" regex("[0-9]*.[0-9]*")> ")" """
+
+
+def test_build_graph_def_without_or_with_special_delimiters_once_any(
+    def_without_or_with_special_delimiters_once_any: str,
+):
+    generated_symbol_graph = build_symbol_graph(
+        def_without_or_with_special_delimiters_once_any
+    )
+    symbols = _get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+
+    initials = OrderedSet([symbols['"("|0']])
+    tree: dict[Symbol, OrderedSet] = dict(
+        {
+            symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
+            symbols["expression|0"]: OrderedSet([symbols["factor|0"]]),
+            symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
+            symbols['"-"|0']: OrderedSet([symbols['"[0-9]*.[0-9]*"|0']]),
+            symbols['"[0-9]*.[0-9]*"|0']: OrderedSet(
+                [symbols["factor|0"], symbols['")"|0']]
+            ),
+        },
+    )
+    finals = OrderedSet([symbols['")"|0']])
+
+    true_symbol_graph = SymbolGraph(initials=initials, tree=tree, finals=finals)
+
+    assert true_symbol_graph == generated_symbol_graph
+
+
+# -------- SymbolGraphType.STANDARD + SymbolGraphType.ONCE_ANY --------
+
+
+@pytest.fixture
+def def_with_in_and_out_or_with_special_delimiters_once_any():
+    return """ "(" expression (<factor "-"> | <regex("[0-9]*.[0-9]*") | "+">) ")" """
+
+
+def test_build_graph_def_with_in_and_out_or_with_special_delimiters_once_any(
+    def_with_in_and_out_or_with_special_delimiters_once_any: str,
+):
+    generated_symbol_graph = build_symbol_graph(
+        def_with_in_and_out_or_with_special_delimiters_once_any
+    )
+    symbols = _get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+
+    initials = OrderedSet([symbols['"("|0']])
+    tree: dict[Symbol, OrderedSet] = dict(
+        {
+            symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
+            symbols["expression|0"]: OrderedSet(
+                [
+                    symbols["factor|0"],
+                    symbols['"[0-9]*.[0-9]*"|0'],
+                    symbols['"+"|0'],
+                ]
+            ),
+            symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
+            symbols['"-"|0']: OrderedSet([symbols["factor|0"], symbols['")"|0']]),
+            symbols['"[0-9]*.[0-9]*"|0']: OrderedSet(
+                [symbols['"[0-9]*.[0-9]*"|0'], symbols['"+"|0'], symbols['")"|0']]
+            ),
+            symbols['"+"|0']: OrderedSet(
+                [symbols['"[0-9]*.[0-9]*"|0'], symbols['"+"|0'], symbols['")"|0']]
+            ),
+        },
+    )
+    finals = OrderedSet([symbols['")"|0']])
+
+    true_symbol_graph = SymbolGraph(initials=initials, tree=tree, finals=finals)
+
+
+@pytest.fixture
+def def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and_end_with_special_delimiters_once_any():
+    return """ "(" expression <<factor "-"> ("/" factor) <"+" power> expression (regex("[0-9]*.[0-9]*") "*") | <regex("[0-9]*.[0-9]*") factor | "+" expression>> ")" """
+
+
+# [NOTE] DFS visits the third `expression` symbol from the subdefinition ("+" expression`) second and not third.
+# That is because the third `expression` is higher in the tree.
+def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and_end_with_special_delimiters_once_any(
+    def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and_end_with_special_delimiters_once_any: str,
+):
+    generated_symbol_graph = build_symbol_graph(
+        def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and_end_with_special_delimiters_once_any
+    )
+    symbols = _get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+
+    initials = OrderedSet([symbols['"("|0']])
+    tree: dict[Symbol, OrderedSet] = dict(
+        {
+            symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
+            symbols["expression|0"]: OrderedSet(
+                [
+                    symbols["factor|0"],
+                    symbols['"[0-9]*.[0-9]*"|0'],
+                    symbols['"+"|0'],
+                ]
+            ),
+            symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
+            symbols['"-"|0']: OrderedSet([symbols["factor|0"], symbols['"/"|0']]),
+            symbols['"/"|0']: OrderedSet([symbols["factor|2"]]),
+            symbols["factor|2"]: OrderedSet([symbols['"+"|1']]),
+            symbols['"+"|1']: OrderedSet([symbols["power|0"]]),
+            symbols["power|0"]: OrderedSet([symbols['"+"|1'], symbols["expression|2"]]),
+            symbols["expression|2"]: OrderedSet([symbols['"[0-9]*.[0-9]*"|1']]),
+            symbols['"[0-9]*.[0-9]*"|1']: OrderedSet([symbols['"*"|0']]),
+            symbols['"*"|0']: OrderedSet(
+                [
+                    symbols["factor|0"],
+                    symbols['"[0-9]*.[0-9]*"|0'],
+                    symbols['"+"|0'],
+                    symbols['")"|0'],
+                ]
+            ),
+            symbols['"[0-9]*.[0-9]*"|0']: OrderedSet([symbols["factor|1"]]),
+            symbols["factor|1"]: OrderedSet(
+                [
+                    symbols['"[0-9]*.[0-9]*"|0'],
+                    symbols['"+"|0'],
+                    symbols["factor|0"],
+                    symbols['")"|0'],
+                ]
+            ),
+            symbols['"+"|0']: OrderedSet([symbols["expression|1"]]),
+            symbols["expression|1"]: OrderedSet(
+                [
+                    symbols['"[0-9]*.[0-9]*"|0'],
+                    symbols['"+"|0'],
+                    symbols["factor|0"],
+                    symbols['")"|0'],
+                ]
+            ),
+        },
+    )
+    finals = OrderedSet([symbols['")"|0']])
+
+    true_symbol_graph = SymbolGraph(initials=initials, tree=tree, finals=finals)
+
+    assert true_symbol_graph == generated_symbol_graph
+
+
+# -------- SymbolGraphType.NONE_ONCE --------
 
 
 @pytest.fixture
@@ -979,7 +1125,7 @@ def test_build_graph_def_without_or_with_special_delimiters_none_once(
     assert true_symbol_graph == generated_symbol_graph
 
 
-# -------- SymbolGraphType.STANDARD + SymbolGraphType.NONE_ONE --------
+# -------- SymbolGraphType.STANDARD + SymbolGraphType.NONE_ONCE --------
 
 
 @pytest.fixture
@@ -1284,7 +1430,7 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and
     assert true_symbol_graph == generated_symbol_graph
 
 
-# -------- SymbolGraphType.STANDARD + SymbolGraphType.NONE_ANY + SymbolGraphType.NONE_ONE --------
+# -------- SymbolGraphType.STANDARD + SymbolGraphType.NONE_ANY + SymbolGraphType.NONE_ONCE --------
 
 
 @pytest.fixture
@@ -1347,6 +1493,79 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and
                 [
                     symbols["factor|0"],
                     symbols['"/"|0'],
+                    symbols['"[0-9]*.[0-9]*"|0'],
+                    symbols['"+"|0'],
+                    symbols['")"|0'],
+                ]
+            ),
+        },
+    )
+    finals = OrderedSet([symbols['")"|0']])
+
+    true_symbol_graph = SymbolGraph(initials=initials, tree=tree, finals=finals)
+
+    assert true_symbol_graph == generated_symbol_graph
+
+
+# -------- SymbolGraphType.STANDARD + SymbolGraphType.NONE_ANY + SymbolGraphType.ONCE_ANY + SymbolGraphType.NONE_ONCE --------
+
+
+@pytest.fixture
+def def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and_end_with_special_delimiters_none_once_any_none_once():
+    return """ "(" expression {<factor "-"> ("/" factor) ["+" power] expression (regex("[0-9]*.[0-9]*") "*") | [regex("[0-9]*.[0-9]*") factor | "+" expression]} ")" """
+
+
+def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and_end_with_special_none_once_any_none_once(
+    def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and_end_with_special_delimiters_none_once_any_none_once: str,
+):
+    generated_symbol_graph = build_symbol_graph(
+        def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and_end_with_special_delimiters_none_once_any_none_once
+    )
+    symbols = _get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+
+    initials = OrderedSet([symbols['"("|0']])
+    tree: dict[Symbol, OrderedSet] = dict(
+        {
+            symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
+            symbols["expression|0"]: OrderedSet(
+                [
+                    symbols["factor|0"],
+                    symbols['"[0-9]*.[0-9]*"|0'],
+                    symbols['"+"|0'],
+                    symbols['")"|0'],
+                ]
+            ),
+            symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
+            symbols['"-"|0']: OrderedSet([symbols["factor|0"], symbols['"/"|0']]),
+            symbols['"/"|0']: OrderedSet([symbols["factor|2"]]),
+            symbols["factor|2"]: OrderedSet(
+                [symbols['"+"|1'], symbols["expression|2"]]
+            ),
+            symbols['"+"|1']: OrderedSet([symbols["power|0"]]),
+            symbols["power|0"]: OrderedSet([symbols["expression|2"]]),
+            symbols["expression|2"]: OrderedSet([symbols['"[0-9]*.[0-9]*"|1']]),
+            symbols['"[0-9]*.[0-9]*"|1']: OrderedSet([symbols['"*"|0']]),
+            symbols['"*"|0']: OrderedSet(
+                [
+                    symbols["factor|0"],
+                    symbols['"[0-9]*.[0-9]*"|0'],
+                    symbols['"+"|0'],
+                    symbols['")"|0'],
+                ]
+            ),
+            symbols['"[0-9]*.[0-9]*"|0']: OrderedSet([symbols["factor|1"]]),
+            symbols["factor|1"]: OrderedSet(
+                [
+                    symbols["factor|0"],
+                    symbols['"[0-9]*.[0-9]*"|0'],
+                    symbols['"+"|0'],
+                    symbols['")"|0'],
+                ]
+            ),
+            symbols['"+"|0']: OrderedSet([symbols["expression|1"]]),
+            symbols["expression|1"]: OrderedSet(
+                [
+                    symbols["factor|0"],
                     symbols['"[0-9]*.[0-9]*"|0'],
                     symbols['"+"|0'],
                     symbols['")"|0'],
