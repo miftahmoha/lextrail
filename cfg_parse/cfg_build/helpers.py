@@ -52,9 +52,23 @@ def _is_end_def_symbol(symbol: Symbol):
 
 def _is_set_contains_end_def_symbol(ordered_set: OrderedSet[Symbol]) -> bool:
     for symbol in ordered_set:
-        if symbol.content == "END_DEF" and symbol.s_type == SymbolType.SPECIAL:
+        if _is_end_def_symbol(symbol):
             return True
     return False
+
+
+def _get_end_def_symbol_for_seq(
+    sequence: OrderedSet[Symbol] | list[Symbol],
+) -> list[Symbol]:
+    symbols = []
+    for symbol in sequence:
+        if _is_end_def_symbol(symbol):
+            symbols.append(symbol)
+
+    if len(symbols) == 0:
+        raise SymbolNotFound(f"No Symbol matching {content} was found.")
+
+    return symbols
 
 
 def _discard_single_nodes_from_tree(
@@ -63,6 +77,8 @@ def _discard_single_nodes_from_tree(
     single_node_symbols = []
     symbol_graph_tree_copy = symbol_graph_tree.copy()
 
+    # [NOTE] The reason we can't delete directly is
+    # `RuntimeError: dictionary changed size during iteration`.
     for symbol_key in symbol_graph_tree_copy.keys():
         if not symbol_graph_tree_copy[symbol_key]:
             single_node_symbols.append(symbol_key)
@@ -73,11 +89,12 @@ def _discard_single_nodes_from_tree(
     return symbol_graph_tree_copy
 
 
+# [NOTE] Make it accessible only for terminals.
 def _get_symbol_from_content_attr_for_seq(
-    ordered_set_or_list: OrderedSet[Symbol] | list[Symbol], content: str
+    sequence: OrderedSet[Symbol] | list[Symbol], content: str
 ) -> list[Symbol]:
     symbols = []
-    for symbol in ordered_set_or_list:
+    for symbol in sequence:
         if symbol.content == content:
             symbols.append(symbol)
 
@@ -160,7 +177,7 @@ def _is_valid_symbol_syntax(symbol_str: str) -> bool:
         return symbol_str.startswith('regex("') and symbol_str.endswith('")')
 
     def _is_special_symbol(symbol_str: str):
-        return symbol_str in "()[]{}|" and len(symbol_str) == 1
+        return symbol_str in "()[]{}<>|*+?" and len(symbol_str) == 1
 
     return (
         _is_terminal(symbol_str)
@@ -228,6 +245,16 @@ def _pre_process_symbol_def(symbol_def: str) -> str:
     return _insert_space_between_delimiters(_insert_standard_delimiters(symbol_def))
 
 
+def _is_escaped(regex_str: str, index: int) -> bool:
+    if index < 0:
+        return False
+    j = 0
+    while regex_str[index] == "\\":
+        j += 1
+        index -= 1
+    return j % 2 != 0
+
+
 def _check_if_valid_regex(pattern):
     try:
         re.compile(pattern)
@@ -253,11 +280,6 @@ def _split_symbols(symbol_def_str: str) -> list[str]:
             current.append(current_character)
             in_regex = not in_regex
 
-        # Escaped regex delimiters `\\(` and `\\)` are ignored.
-        elif current_character == "()" and symbol_def_str[i - 1] != "\\" and in_regex:
-            current.append(current_character)
-            is_regex_delim = not is_regex_delim
-
         elif symbol_def_str[i - 1 : i + 1] == '")' and in_regex and not is_regex_delim:
             result.append("".join(current) + current_character)
             current.clear()
@@ -266,18 +288,44 @@ def _split_symbols(symbol_def_str: str) -> list[str]:
         # Special case: Dealing with an escaped quote "\"".
         # `"` is used as symbol delimiters for terminals (`"<symbol_name>"`), but for the user to express `"`
         # as a terminal, he/she needs to escape it as follows "\"".
-        elif symbol_def_str[i : i + 2] == r"\"" and in_quote:
+        elif (
+            current_character == "\\"
+            and not _is_escaped(symbol_def_str, i - 1)
+            and symbol_def_str[i + 1] == '"'
+            and in_quote
+        ):
             is_escaped_quote = not is_escaped_quote
 
+        # Converting ()*, ()+ and ()? syntax to standard.
+        elif (
+            current_character == ")"
+            and i + 1 < len(symbol_def_str)
+            and symbol_def_str[i + 1] in "+*?"
+            and not in_quote
+            and not in_regex
+        ):
+            i_dict: dict[str, str] = {"*": "{", "+": "<", "?": "["}
+            o_dict: dict[str, str] = {"*": "}", "+": ">", "?": "]"}
+            if current:
+                result.append("".join(current))
+                current.clear()
+            # Convert `*+?` to standard `)]}`.
+            result.append(o_dict[symbol_def_str[i + 1]])
+            # Convert `*+?` to standard `([{`.
+            for idx in reversed(range(len(result))):
+                if result[idx] == "(":
+                    result[idx] = i_dict[symbol_def_str[i + 1]]
+                    break
+            # Jump over `*+?`.
+            i += 2
+            continue
+
         # Dealing with special delimiters.
-        elif current_character in "()[]{}" and not in_quote and not in_regex:
+        elif current_character in "()[]{}<>" and not in_quote and not in_regex:
             # Separating delimiters from non-terminal symbols.
             if current:
                 result.append("".join(current))
-                result.append(current_character)
                 current.clear()
-                i += 1
-                continue
             result.append(current_character)
 
         elif current_character == '"':
@@ -298,9 +346,7 @@ def _split_symbols(symbol_def_str: str) -> list[str]:
                 if current:
                     result.append("".join(current))
                     current.clear()
-                    current.append(current_character)
-                else:
-                    current.append(current_character)
+                current.append(current_character)
             in_quote = not in_quote
 
         elif current_character.isspace():
@@ -308,13 +354,12 @@ def _split_symbols(symbol_def_str: str) -> list[str]:
                 if current:
                     result.append("".join(current))
                     current.clear()
-                i += 1
-                continue
             else:
                 current.append(current_character)
 
         else:
             current.append(current_character)
+
         i += 1
 
     if current:
