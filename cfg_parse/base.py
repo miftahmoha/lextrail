@@ -109,7 +109,8 @@ class SymbolGraph:
 class SymbolGraphType(Enum):
     STANDARD = 1
     NONE_ANY = 2
-    NONE_ONCE = 3
+    ONCE_ANY = 3
+    NONE_ONCE = 4
 
 
 @dataclass
