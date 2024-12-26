@@ -1,16 +1,17 @@
 from typing import Deque
 
-from cfg_parse.base import OrderedSet, Symbol, SymbolGraph, SymbolGraphType, SymbolType
-from cfg_parse.cfg_build.helpers import (
+from lextrail.base import OrderedSet, Symbol, SymbolGraph, SymbolGraphType, SymbolType
+from lextrail.build.passes import (
+    _build_symbol_from_string,
     _convert_str_def_to_str_queue,
-    _convert_str_to_symbol,
-    _discard_single_nodes_from_tree,
-    _get_once_initial_for_none_any_or_once_end_def_symbols,
-    _get_symbol_from_content_attr_for_seq,
-    _get_symbol_predecessors,
+    _get_once_initial_end_def_symbols,
+)
+from lextrail.helpers import (
     _is_end_def_symbol,
-    _is_set_contains_end_def_symbol,
-    _get_end_def_symbol_for_seq,
+    _is_end_def_symbol_in_sequence,
+    _fetch_end_def_symbol_in_sequence,
+    _fetch_symbol_predecessors_in_tree,
+    _discard_single_nodes_from_tree,
 )
 
 
@@ -24,7 +25,7 @@ def construct_symbol_subgraph(
         return symbol_graph
 
     # INITIALS
-    initial = _convert_str_to_symbol(symbols_str[0])
+    initial = _build_symbol_from_string(symbols_str[0])
     # Add the node to the initials.
     symbol_graph.initials.add(initial)
     # Add the node to the symbol graph.
@@ -45,7 +46,7 @@ def construct_symbol_subgraph(
             symbol_graph.finals.add(symbol_previous)
             continue
 
-        node = _convert_str_to_symbol(symbol_str)
+        node = _build_symbol_from_string(symbol_str)
 
         if symbol_previous in symbol_graph.finals:
             # Add the node to the initials.
@@ -100,24 +101,30 @@ def connect_symbol_graph(
 
     # Allow skipping rule, search for `END_DEF` symbols that are not finals but were once initials
     # for "NONE_ANY" and "NONE_ONCE" symbol graphs.
-    # [TO DO] Could construct one list that contains all "END_DEF" symbols, it'll remove the need
-    # to go through the `symbol_graph_lhs_copy.finals` below. Keep modularity
-    # and separation between both "END_DEF" symbols for the moment.
+    # [TODO] Could construct one list that contains all "END_DEF" symbols, it'll remove the need
+    # to go through the `symbol_graph_lhs_copy.finals` below. Keep modularity and separation
+    # between both "END_DEF" symbols for the moment.
     # [NOTE] `single_symbols` are symbols without a connection.
 
     (
-        once_init_end_def_symbols,
-        once_init_end_def_single_symbols,
-    ) = _get_once_initial_for_none_any_or_once_end_def_symbols(symbol_graph_lhs_copy)
+        once_end_def_symbols_in_tree,
+        once_end_def_symbols_in_initials,
+    ) = _get_once_initial_end_def_symbols(symbol_graph_lhs_copy)
 
-    for once_init_single_end_def_symbol in once_init_end_def_single_symbols:
-        symbol_graph_lhs_copy.initials.discard(once_init_single_end_def_symbol)
+    assert len(once_end_def_symbols_in_initials) in [
+        0,
+        1,
+    ], f"Repeated `END_DEF` symbol in initials."
+    if len(once_end_def_symbols_in_initials) == 1:
+        symbol_graph_lhs_copy.initials.discard(once_end_def_symbols_in_initials[0])
         symbol_graph_lhs_copy.initials.extend(symbol_graph_rhs_copy.initials)
 
     # Connect the left `FINALS` (also takes care of `END_DEF`s) with the right `INITIALS`.
-    for symbol_final in list(symbol_graph_lhs_copy.finals) + once_init_end_def_symbols:
+    for symbol_final in (
+        list(symbol_graph_lhs_copy.finals) + once_end_def_symbols_in_tree
+    ):
         if _is_end_def_symbol(symbol_final):
-            symbol_predecessors = _get_symbol_predecessors(
+            symbol_predecessors = _fetch_symbol_predecessors_in_tree(
                 symbol_graph_tree_out, symbol_final
             )
 
@@ -160,10 +167,10 @@ def union_symbol_graph(
     # Extend the left `INITIALS` to the right `INITIALS`, `|` is not used because it discards the order (*for testing).
 
     # Removes duplicates (if they exist) `END_DEF` symbols from `INITIALS`.
-    if _is_set_contains_end_def_symbol(
+    if _is_end_def_symbol_in_sequence(
         symbol_graph_lhs_copy.initials
-    ) and _is_set_contains_end_def_symbol(symbol_graph_rhs_copy.initials):
-        symbol_special_eos_symbol = _get_end_def_symbol_for_seq(
+    ) and _is_end_def_symbol_in_sequence(symbol_graph_rhs_copy.initials):
+        symbol_special_eos_symbol = _fetch_end_def_symbol_in_sequence(
             symbol_graph_rhs_copy.initials
         )
         symbol_graph_rhs_copy.initials.discard(symbol_special_eos_symbol[0])
@@ -187,19 +194,13 @@ def union_symbol_graph(
     )
 
 
-# Delimiters such as `NONE_ANY`, `NONE_ONE` can enduce changes in the structure that
-# the connection and the union can't express.
-# For example when `NONE_ANY` delimiters nest a composite definition such as
-# (factor "-") | {regex("[0-9]*.[0-9]*") factor | "+" expression},
-# there'll be new connections, one of them is '"-"' being connected to regex("[0-9]*.[0-9]*") and '"+"'.
-# `cast_symbol_graph` will add those remaining connections.
 def cast_symbol_graph(
     symbol_graph: SymbolGraph,
-    symbol_graph_cast_type: SymbolGraphType,
+    cast_type: SymbolGraphType,
 ) -> SymbolGraph:
     symbol_graph_copy = symbol_graph.copy()
 
-    if symbol_graph_cast_type == SymbolGraphType.NONE_ANY:
+    if cast_type == SymbolGraphType.NONE_ANY:
         # Add a `END_DEF` to the `initials`, since it can be `NONE`.
         # Add a loop since it's a `(A..Z)*` expression, last element `Z` should connect to the first element `A`.
         # Should add a `END_DEF` to `A` and `Z` (symbols should be different) if `Z` is not connected to any node (always add it, if it's connected to some node remove it afterwards while connecting the graphs)
@@ -210,7 +211,7 @@ def cast_symbol_graph(
         for symbol_final in symbol_graph_copy.finals:
             if symbol_final.content == "END_DEF":
                 # [PERFORMANCE] Could raise a flag here and avoid calling is_contain_EOS(symbol_graph_copy.finals) below.
-                symbol_predecessors = _get_symbol_predecessors(
+                symbol_predecessors = _fetch_symbol_predecessors_in_tree(
                     symbol_graph_copy.tree, symbol_final
                 )
 
@@ -234,12 +235,12 @@ def cast_symbol_graph(
                 for final in symbol_final:
                     symbol_graph_copy.tree[final].add(symbol_initial)
 
-        if _is_set_contains_end_def_symbol(
+        if _is_end_def_symbol_in_sequence(
             symbol_graph_copy.initials
-        ) and _is_set_contains_end_def_symbol(symbol_graph_copy.finals):
+        ) and _is_end_def_symbol_in_sequence(symbol_graph_copy.finals):
             return symbol_graph_copy
 
-        if not _is_set_contains_end_def_symbol(symbol_graph_copy.initials):
+        if not _is_end_def_symbol_in_sequence(symbol_graph_copy.initials):
             # `END_DEF` symbol for the initials.
             symbol_special_eos_initial = Symbol("END_DEF", SymbolType.SPECIAL)
 
@@ -249,7 +250,7 @@ def cast_symbol_graph(
             # Add `END_DEF` as node.
             symbol_graph_copy.tree[symbol_special_eos_initial]
 
-        if not _is_set_contains_end_def_symbol(symbol_graph_copy.finals):
+        if not _is_end_def_symbol_in_sequence(symbol_graph_copy.finals):
             # `END_DEF` symbols for the initials and finals.
             symbol_special_eos_final = Symbol("END_DEF", SymbolType.SPECIAL)
 
@@ -263,16 +264,13 @@ def cast_symbol_graph(
             # Add `END_DEF` as `finals`.
             symbol_graph_copy.finals.add(symbol_special_eos_final)
 
-            # Add `END_DEF` as node.
-            # symbol_graph_copy.tree[symbol_special_eos_final]
-
         return symbol_graph_copy
 
-    elif symbol_graph_cast_type == SymbolGraphType.ONCE_ANY:
+    elif cast_type == SymbolGraphType.ONCE_ANY:
         # Same approach as `NONE_ANY`.
         for symbol_final in symbol_graph_copy.finals:
             if symbol_final.content == "END_DEF":
-                symbol_predecessors = _get_symbol_predecessors(
+                symbol_predecessors = _fetch_symbol_predecessors_in_tree(
                     symbol_graph_copy.tree, symbol_final
                 )
 
@@ -289,14 +287,14 @@ def cast_symbol_graph(
                     symbol_graph_copy.tree[final].add(symbol_initial)
 
         # Difference lies in not having an `END_DEF` as an initial.
-        if not _is_set_contains_end_def_symbol(
+        if not _is_end_def_symbol_in_sequence(
             symbol_graph_copy.initials
-        ) and _is_set_contains_end_def_symbol(symbol_graph_copy.finals):
+        ) and _is_end_def_symbol_in_sequence(symbol_graph_copy.finals):
             return symbol_graph_copy
 
-        if _is_set_contains_end_def_symbol(symbol_graph_copy.initials):
+        if _is_end_def_symbol_in_sequence(symbol_graph_copy.initials):
             # Search for `END_DEF` symbol in the initials.
-            initial_end_def_symbols = _get_end_def_symbol_for_seq(
+            initial_end_def_symbols = _fetch_end_def_symbol_in_sequence(
                 symbol_graph_copy.initials
             )
 
@@ -313,7 +311,7 @@ def cast_symbol_graph(
             del symbol_graph_copy.tree[initial_end_def_symbols[0]]
 
         # Same as `NONE_ANY`.
-        if not _is_set_contains_end_def_symbol(symbol_graph_copy.finals):
+        if not _is_end_def_symbol_in_sequence(symbol_graph_copy.finals):
             # `END_DEF` symbols for the initials and finals.
             symbol_special_eos_final = Symbol("END_DEF", SymbolType.SPECIAL)
 
@@ -327,12 +325,9 @@ def cast_symbol_graph(
             # Add `END_DEF` as `finals`.
             symbol_graph_copy.finals.add(symbol_special_eos_final)
 
-            # Add `END_DEF` as node.
-            # symbol_graph_copy.tree[symbol_special_eos_final]
-
         return symbol_graph_copy
 
-    elif symbol_graph_cast_type == SymbolGraphType.NONE_ONCE:
+    elif cast_type == SymbolGraphType.NONE_ONCE:
         # Add a `END_DEF` to the SOURCE, since it can be `NONE`.
 
         # Check if `END_DEF` already exists.
@@ -347,9 +342,9 @@ def cast_symbol_graph(
         return symbol_graph_copy
 
     else:
-        if _is_set_contains_end_def_symbol(
+        if _is_end_def_symbol_in_sequence(
             symbol_graph_copy.initials
-        ) and _is_set_contains_end_def_symbol(symbol_graph_copy.finals):
+        ) and _is_end_def_symbol_in_sequence(symbol_graph_copy.finals):
             return symbol_graph_copy
         return symbol_graph_copy
 
@@ -367,8 +362,8 @@ def build_symbol_graph(symbol_def: str) -> SymbolGraph:
     # (_0 [EMPTY_GRAPH] --> `symbol_graph_bottom_level_{0}` (_1 `def_1` (_2 `def_2` 2_) `def_3` ) 1_) 0_)
     # When we reach a new stack layer, in the example `(_2`, we'll recurse through the next stack layer `(_2`
     # and return the result (when we encouter a closing delimiter `), ], }`) to a variable called `symbol_graph_upper_level_{1}`.
-    # Then we build `def_2` which'll be returned to symbol_graph_upper_level_{1}`.
-    # Finally, It'll be connected to `def_1` and stored into a variable called `symbol_graph_partial_lhs_{1}`.`
+    # Then we build `def_2` which'll be returned to `symbol_graph_upper_level_{1}`.
+    # Finally, it'll be connected to `def_1` and stored into a variable called `symbol_graph_partial_lhs_{1}`.`
     # We repeat the same process within a single stack, we successively build bottom and upper layers,
     # ``def_1` (_2 `def_2` 2_)` and ``def_3` (_3 def_4 3_)` while acummulating the result
     # in `symbol_graph_partial_lhs_{1}` .
@@ -447,7 +442,7 @@ def build_symbol_graph(symbol_def: str) -> SymbolGraph:
                     symbol_graph_out = union_symbol_graph(
                         current_stack_accumulated_symbol_graph, symbol_graph_or_rhs
                     )
-                    return cast_symbol_graph(symbol_graph_out, SYMBOL_GRAPH_TYPE)
+                    return cast_symbol_graph(symbol_graph_out, SYMBOL_GRAPH_TYPE)  # type: ignore
 
                 current_stack_to_accumulate_symbol_graph = construct_symbol_subgraph(
                     current_stack_accumulated_symbols
@@ -456,7 +451,7 @@ def build_symbol_graph(symbol_def: str) -> SymbolGraph:
                     current_stack_accumulated_symbol_graph,
                     current_stack_to_accumulate_symbol_graph,
                 )
-                return cast_symbol_graph(symbol_graph_out, SYMBOL_GRAPH_TYPE)
+                return cast_symbol_graph(symbol_graph_out, SYMBOL_GRAPH_TYPE)  # type: ignore
 
             elif str_symbol == "|":
                 # Delegates the case where there exist no opening `("(", "[", "{")`

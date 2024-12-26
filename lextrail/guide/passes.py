@@ -1,50 +1,31 @@
 import inspect
-import random
 import re
 import warnings
 from collections import deque
 from copy import deepcopy
 from typing import Callable
 
-from cfg_parse.base import (
+from lextrail.base import (
     CFGGenerationState,
     OrderedSet,
     Symbol,
     SymbolGraph,
     SymbolType,
 )
-from cfg_parse.cfg_build.helpers import (
-    _convert_str_to_symbol,
-    _get_symbol_predecessors,
-    _insert_space_between_delimiters,
-    _is_end_def_symbol,
+from lextrail.build.passes import (
+    _build_symbol_from_string,
+    _split_symbols,
 )
-from cfg_parse.exceptions import (
+from lextrail.helpers import (
+    _fetch_symbol_predecessors_in_tree,
+    _is_escaped,
+    _fetch_non_terminal_from_content_in_graph,
+)
+from lextrail.exceptions import (
     InfiniteLoop,
     InvalidGrammar,
-    ParsingError,
     SymbolNotFound,
 )
-
-
-def _get_symbols_from_content_attr_for_graphs(
-    symbol_graph: SymbolGraph, content: str
-) -> list[Symbol]:
-    symbols = []
-
-    for symbol_initial in symbol_graph.initials:
-        if symbol_initial.content == content:
-            symbols.append(symbol_initial)
-
-    for symbol_successors in symbol_graph.tree.values():
-        for symbol_successor in symbol_successors:
-            if symbol_successor.content == content and symbol_successor not in symbols:
-                symbols.append(symbol_successor)
-
-    if len(symbols) == 0:
-        raise SymbolNotFound(f"No Symbol matching {content} was found.")
-
-    return symbols
 
 
 def _is_not_valid_rule_name(rule: str):
@@ -53,34 +34,43 @@ def _is_not_valid_rule_name(rule: str):
     return regex.search(rule) is not None
 
 
-def _split_definition(definition: str):
-    return _insert_space_between_delimiters(definition).split()
+def _split_cfg_grammar(grammar: str) -> list[str]:
+    in_quote = False
+    in_regex = False
+    rules = []
+    current = []
+    i = 0
+
+    while i < len(grammar):
+        current_character = grammar[i]
+
+        if current_character == '"' and not _is_escaped(grammar, i - 1):
+            in_quote = not in_quote
+
+        elif current_character == "/" and not in_regex and not in_quote:
+            in_regex = not in_regex
+
+        elif current_character == "/" and in_regex:
+            in_regex = not in_regex
+
+        elif current_character == "\n" and not in_quote and not in_regex:
+            if current:
+                rules.append("".join(current))
+                current.clear()
+            i += 1
+            continue
+
+        current.append(current_character)
+        i += 1
+
+    return rules
 
 
-def _check_for_potential_infinite_loops(
-    rule: str, definition: str, symbol_graph: SymbolGraph
-):
-    is_loop = rule in _split_definition(definition)
-
-    if is_loop:
-        warnings.warn(
-            f"A potential loop of non-terminal symbols exists in {rule}: {definition}."
-        )
-
-        loop_symbols = _get_symbols_from_content_attr_for_graphs(symbol_graph, rule)
-
-        for loop_symbol in loop_symbols:
-            if _is_no_escape_from_infinite_loop(symbol_graph, loop_symbol):
-                raise InfiniteLoop(
-                    f"An infinite loop of non-terminal symbols `{rule} -> {rule}` is found in {rule}: {definition}."
-                )
-
-
-def _divide_cfg_grammar_into_definitions(grammar: str) -> dict[str, str]:
+def _divide_cfg_grammar_into_rules(grammar: str) -> dict[str, str]:
     divided_cfg_grammar_dict: dict[str, str] = {}
-    current_rule: str = ""
+    current_rule_name: str = ""
 
-    lines = grammar.strip().split("\n")
+    lines = _split_cfg_grammar(grammar)
 
     for line in lines:
         line = line.strip()
@@ -90,10 +80,11 @@ def _divide_cfg_grammar_into_definitions(grammar: str) -> dict[str, str]:
             continue
 
         if ":" not in line:
-            if not current_rule:
+            # [NOTE] Continued rule in a new line only allowed if `|` is used at the beginning.
+            if line[0] != "|":
                 raise InvalidGrammar(f"Missing `:` in '''{line}'''.")
 
-            divided_cfg_grammar_dict[current_rule] += " " + line
+            divided_cfg_grammar_dict[current_rule_name] += " " + line
 
         else:
             parts = line.split(":")
@@ -102,20 +93,27 @@ def _divide_cfg_grammar_into_definitions(grammar: str) -> dict[str, str]:
                 # Handles multiple use of ':' in a single definition.
                 raise InvalidGrammar(f"Invalid grammar rule: {line}.")
 
-            current_rule, definition = parts
+            current_rule_name, rule_definition = parts
 
-            if _is_not_valid_rule_name(current_rule):
-                raise InvalidGrammar(f"Invalid rule name: {current_rule}.")
+            if _is_not_valid_rule_name(current_rule_name):
+                raise InvalidGrammar(f"Invalid rule name: {current_rule_name}.")
 
-            if current_rule in divided_cfg_grammar_dict:
-                raise InvalidGrammar(f"Redefinition of grammar rule: {current_rule}.")
+            if current_rule_name in divided_cfg_grammar_dict:
+                raise InvalidGrammar(
+                    f"Redefinition of grammar rule: {current_rule_name}."
+                )
 
-            divided_cfg_grammar_dict[current_rule] = definition.strip()
+            divided_cfg_grammar_dict[current_rule_name] = rule_definition.strip()
 
     if "start" not in divided_cfg_grammar_dict:
         raise InvalidGrammar("The symbol `start` is non-existant.")
 
     return divided_cfg_grammar_dict
+
+
+"""
+    Infinite loops.
+"""
 
 
 def dfs(symbol_graph: SymbolGraph, start: OrderedSet[Symbol]) -> list[Symbol]:
@@ -133,6 +131,27 @@ def dfs(symbol_graph: SymbolGraph, start: OrderedSet[Symbol]) -> list[Symbol]:
     return visited
 
 
+def _check_for_potential_infinite_loops(
+    rule_name: str, rule_definition: str, symbol_graph: SymbolGraph
+):
+    is_loop = rule_name in _split_symbols(rule_definition)
+
+    if is_loop:
+        warnings.warn(
+            f"A potential loop of non-terminal symbols exists in {rule_name}: {rule_definition}."
+        )
+
+        loop_symbols = _fetch_non_terminal_from_content_in_graph(
+            symbol_graph, rule_name
+        )
+
+        for loop_symbol in loop_symbols:
+            if _is_no_escape_from_infinite_loop(symbol_graph, loop_symbol):
+                raise InfiniteLoop(
+                    f"An infinite loop of non-terminal symbols `{rule_name} -> {rule_name}` is found in {rule_name}: {rule_definition}."
+                )
+
+
 def _is_no_escape_from_infinite_loop(symbol_graph: SymbolGraph, symbol_inf: Symbol):
     # Passing by value, not by reference.
     symbol_graph_copy: SymbolGraph = deepcopy(symbol_graph)
@@ -145,7 +164,7 @@ def _is_no_escape_from_infinite_loop(symbol_graph: SymbolGraph, symbol_inf: Symb
 
         try:
             predecessors.extend(
-                _get_symbol_predecessors(symbol_graph.tree, current_symbol)
+                _fetch_symbol_predecessors_in_tree(symbol_graph.tree, current_symbol)
             )
         except SymbolNotFound:
             # [NOTE] Deals with a case when we reach the beggining of a subgraph,
@@ -180,70 +199,9 @@ def _is_no_escape_from_infinite_loop(symbol_graph: SymbolGraph, symbol_inf: Symb
     return is_no_escape
 
 
-def _extract_str_from_symbols(symbols: list[Symbol]) -> list[str]:
-    symbols_str: list[str] = []
-
-    for symbol in symbols:
-        symbols_str.append(symbol.content)
-
-    return symbols_str
-
-
-def _get_next_terminal_symbols_as_regex(
-    symbols: list[Symbol],
-) -> str:
-    regexes: list[str] = []
-
-    for symbol in symbols:
-        print(symbol)
-        if symbol.s_type == SymbolType.TERMINAL or _is_end_def_symbol(symbol):
-            regexes.append(re.escape(symbol.content))
-        elif symbol.s_type == SymbolType.REGEX:
-            regexes.append(symbol.content)
-        else:
-            raise ParsingError(
-                f"{symbol.s_type} is invalid, only {SymbolType.TERMINAL} or {SymbolType.REGEX} are valid."
-            )
-
-    return r"(" + r"|".join([r"(" + x + r")" for x in regexes]) + r")"
-
-
-def _validate_regex(string: str, pattern: str) -> bool:
-    regex = re.compile(pattern)
-    if regex.fullmatch(string):
-        return True
-    return False
-
-
-def _retrace_symbol_obj_from_str(
-    chosen_symbol_str: str,
-    next_terminal_symbols: list[Symbol],
-) -> Symbol:
-    chosen_symbols: list[Symbol] = []
-
-    for symbol in next_terminal_symbols:
-        # [NOTE] `chosen_symbol_str` could represent more than one symbol in different paths. Send a warning and randomly pick a symbol with equal probability.
-        if symbol.s_type == SymbolType.REGEX:
-            if _validate_regex(chosen_symbol_str, symbol.content):
-                chosen_symbols.append(symbol)
-        elif symbol.s_type == SymbolType.TERMINAL or _is_end_def_symbol(symbol):
-            if symbol.content == chosen_symbol_str:
-                chosen_symbols.append(symbol)
-        else:
-            raise ParsingError(
-                f"{symbol.s_type} is invalid, only {SymbolType.TERMINAL} or {SymbolType.REGEX} are valid."
-            )
-
-    # [NOTE] Could be interactive here.
-    # Shows the different paths and lets the user choose which one.
-    if len(chosen_symbols) > 2:
-        warnings.warn(
-            "Chosen symbol present in multiple paths, one will be picked with equal probability."
-        )
-        chosen_symbol = random.choice(chosen_symbols)
-        return chosen_symbol
-
-    return chosen_symbols[0]
+"""
+    Combining terminals as single tokens as next choice.
+"""
 
 
 def _validate_encoder(encoder: Callable[[str], list[int]]):
@@ -274,7 +232,7 @@ def _get_paths_if_valid_single_token(
         if symbol_next.s_type == SymbolType.TERMINAL:
             str_comb = symbol_prev.content[1:-1] + symbol_next.content[1:-1]
             if len(encoder(str_comb)) == 1:
-                symbol_comb = _convert_str_to_symbol('"' + str_comb + '"')
+                symbol_comb = _build_symbol_from_string('"' + str_comb + '"')
                 symbol_comb_hist = next_terminals_w_history_copy[symbol_next]
                 # Give `symbol_next`'s connections to `symbol_comb`.
                 # [NOTE] Always going to be so, if a symbol exists in `next_terminals_w_history.keys()`
@@ -289,6 +247,7 @@ def _get_paths_if_valid_single_token(
     return valid_paths
 
 
+# Should be set as some environnemental variable by the user.
 def update_for_possible_single_token_combinations(
     cfg_object,
     encoder: Callable[[str], list[int]],

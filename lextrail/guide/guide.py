@@ -3,14 +3,14 @@ from copy import deepcopy
 from functools import wraps
 from typing import Deque, Optional
 
-from cfg_parse.base import CFGStatefulGraph, Symbol, SymbolGraph, SymbolType
-from cfg_parse.cfg_build.build import build_symbol_graph
-from cfg_parse.cfg_build.helpers import _is_end_def_symbol
-from cfg_parse.cfg_guide.helpers import (
+from lextrail.base import CFGStatefulGraph, Symbol, SymbolGraph, SymbolType
+from lextrail.build.build import build_symbol_graph
+from lextrail.guide.passes import (
     _check_for_potential_infinite_loops,
-    _divide_cfg_grammar_into_definitions,
+    _divide_cfg_grammar_into_rules,
 )
-from cfg_parse.exceptions import ParsingError
+from lextrail.helpers import _is_end_def_symbol
+from lextrail.exceptions import ParsingError
 
 CFGGenerationState = Optional[Deque[CFGStatefulGraph]]
 
@@ -18,7 +18,7 @@ CFGGenerationState = Optional[Deque[CFGStatefulGraph]]
 def build_cfg_grammar_into_symbol_graphs(cfg_grammar: str) -> dict[str, SymbolGraph]:
     built_cfg_grammar_dict: dict[str, SymbolGraph] = {}
 
-    divided_cfg_grammar_dict = _divide_cfg_grammar_into_definitions(cfg_grammar)
+    divided_cfg_grammar_dict = _divide_cfg_grammar_into_rules(cfg_grammar)
 
     for symbol_name, symbol_def in divided_cfg_grammar_dict.items():
         built_cfg_grammar_dict[symbol_name] = build_symbol_graph(symbol_def)

@@ -2,3 +2,4 @@ __pycache__/
 animation.py
 tests.py
 todo.txt
+./render/gify.py

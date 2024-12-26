@@ -1,8 +1,8 @@
 import pytest
 
-from cfg_parse.cfg_build.build import _convert_str_def_to_str_queue
-from cfg_parse.cfg_guide.guide import _divide_cfg_grammar_into_definitions
-from cfg_parse.exceptions import (
+from lextrail.build.build import _convert_str_def_to_str_queue
+from lextrail.guide.guide import _divide_cfg_grammar_into_rules
+from lextrail.exceptions import (
     InvalidDelimiters,
     InvalidGrammar,
     InvalidSymbol,
@@ -14,7 +14,7 @@ from cfg_parse.exceptions import (
 
 @pytest.fixture
 def invalid_symbol_terminal_missing_left_quotation():
-    return """ regex("[0-9]*.[0-9]*") | -" factor |  "(" expression ")" """
+    return """ /[0-9]*.[0-9]*/ | -" factor |  "(" expression ")" """
 
 
 def test_invalid_symbol_terminal_missing_left_quotation(
@@ -31,7 +31,7 @@ def test_invalid_symbol_terminal_missing_left_quotation(
 
 @pytest.fixture
 def invalid_symbol_terminal_missing_right_quotation():
-    return """ regex("[0-9]*.[0-9]*") | "- factor |  "(" expression ")" """
+    return """ /[0-9]*.[0-9]*/ | "- factor |  "(" expression ")" """
 
 
 def test_invalid_symbol_terminal_missing_right_quotation(
@@ -48,7 +48,7 @@ def test_invalid_symbol_terminal_missing_right_quotation(
 
 @pytest.fixture
 def invalid_symbol_non_terminal_with_special_characters_0x40():
-    return """ regex("[0-9]*.[0-9]*") | "-" fact@or |  "(" expression ")" """
+    return """ /[0-9]*.[0-9]*/ | "-" fact@or |  "(" expression ")" """
 
 
 def test_invalid_symbol_non_terminal_with_special_characters_0x40(
@@ -64,7 +64,7 @@ def test_invalid_symbol_non_terminal_with_special_characters_0x40(
 
 @pytest.fixture
 def invalid_symbol_non_terminal_with_special_characters_0x2F():
-    return """ regex("[0-9]*.[0-9]*") | "-" factor |  "(" expre/ssion ")" """
+    return """ /[0-9]*.[0-9]*/ | "-" factor |  "(" expre/ssion ")" """
 
 
 def test_invalid_symbol_non_terminal_with_special_characters_0x2F(
@@ -80,7 +80,7 @@ def test_invalid_symbol_non_terminal_with_special_characters_0x2F(
 
 @pytest.fixture
 def invalid_symbol_non_terminal_with_special_characters_0x5E():
-    return """ regex("[0-9]*.[0-9]*") | "-" factor |  "(" expressi^on ")" """
+    return """ /[0-9]*.[0-9]*/ | "-" factor |  "(" expressi^on ")" """
 
 
 def test_invalid_symbol_non_terminal_with_special_characters_0x5E(
@@ -99,7 +99,7 @@ def test_invalid_symbol_non_terminal_with_special_characters_0x5E(
 
 @pytest.fixture
 def invalid_delimiters_missing_without_special_delimiters():
-    return """ "(" expression (factor "-" regex("[0-9]*.[0-9]*") ")" """
+    return """ "(" expression (factor "-" /[0-9]*.[0-9]*/ ")" """
 
 
 def test_invalid_delimiters_missing_without_special_delimiters(
@@ -115,7 +115,7 @@ def test_invalid_delimiters_missing_without_special_delimiters(
 
 @pytest.fixture
 def invalid_delimiters_open_standard_close_none_any():
-    return """ "(" expression (factor "-" regex("[0-9]*.[0-9]*")} ")" """
+    return """ "(" expression (factor "-" /[0-9]*.[0-9]*/} ")" """
 
 
 def test_invalid_delimiters_open_standard_close_none_any(
@@ -126,13 +126,13 @@ def test_invalid_delimiters_open_standard_close_none_any(
 
     assert (
         str(exc_info.value)
-        == 'No opening delimiter `{` found for `}` in `"(" expression ( factor "-" regex("[0-9]*.[0-9]*") <<}>>`.'
+        == 'No opening delimiter `{` found for `}` in `"(" expression ( factor "-" /[0-9]*.[0-9]*/ <<}>>`.'
     )
 
 
 @pytest.fixture
 def invalid_delimiters_open_standard_close_none_once():
-    return """ "(" expression (factor "-" regex("[0-9]*.[0-9]*")] ")" """
+    return """ "(" expression (factor "-" /[0-9]*.[0-9]*/] ")" """
 
 
 def test_invalid_delimiters_open_standard_close_none_once(
@@ -143,13 +143,13 @@ def test_invalid_delimiters_open_standard_close_none_once(
 
     assert (
         str(exc_info.value)
-        == 'No opening delimiter `[` found for `]` in `"(" expression ( factor "-" regex("[0-9]*.[0-9]*") <<]>>`.'
+        == 'No opening delimiter `[` found for `]` in `"(" expression ( factor "-" /[0-9]*.[0-9]*/ <<]>>`.'
     )
 
 
 @pytest.fixture
 def invalid_delimiters_open_none_any_close_standard():
-    return """ "(" expression {factor "-" regex("[0-9]*.[0-9]*")) ")" """
+    return """ "(" expression {factor "-" /[0-9]*.[0-9]*/) ")" """
 
 
 def test_invalid_delimiters_open_none_any_close_standard(
@@ -160,13 +160,13 @@ def test_invalid_delimiters_open_none_any_close_standard(
 
     assert (
         str(exc_info.value)
-        == 'No opening delimiter `(` found for `)` in `"(" expression { factor "-" regex("[0-9]*.[0-9]*") <<)>>`.'
+        == 'No opening delimiter `(` found for `)` in `"(" expression { factor "-" /[0-9]*.[0-9]*/ <<)>>`.'
     )
 
 
 @pytest.fixture
 def invalid_delimiters_open_none_once_close_standard():
-    return """ "(" expression [factor "-" regex("[0-9]*.[0-9]*")) ")" """
+    return """ "(" expression [factor "-" /[0-9]*.[0-9]*/) ")" """
 
 
 def test_invalid_delimiters_open_none_once_close_standard(
@@ -177,13 +177,13 @@ def test_invalid_delimiters_open_none_once_close_standard(
 
     assert (
         str(exc_info.value)
-        == 'No opening delimiter `(` found for `)` in `"(" expression [ factor "-" regex("[0-9]*.[0-9]*") <<)>>`.'
+        == 'No opening delimiter `(` found for `)` in `"(" expression [ factor "-" /[0-9]*.[0-9]*/ <<)>>`.'
     )
 
 
 @pytest.fixture
 def invalid_delimiters_open_none_any_close_none_once():
-    return """ "(" expression {factor "-" regex("[0-9]*.[0-9]*")] ")" """
+    return """ "(" expression {factor "-" /[0-9]*.[0-9]*/] ")" """
 
 
 def test_invalid_delimiters_open_none_any_close_none_once(
@@ -194,13 +194,13 @@ def test_invalid_delimiters_open_none_any_close_none_once(
 
     assert (
         str(exc_info.value)
-        == 'No opening delimiter `[` found for `]` in `"(" expression { factor "-" regex("[0-9]*.[0-9]*") <<]>>`.'
+        == 'No opening delimiter `[` found for `]` in `"(" expression { factor "-" /[0-9]*.[0-9]*/ <<]>>`.'
     )
 
 
 @pytest.fixture
 def invalid_delimiters_open_none_once_close_none_any():
-    return """ "(" expression [factor "-" regex("[0-9]*.[0-9]*")} ")" """
+    return """ "(" expression [factor "-" /[0-9]*.[0-9]*/} ")" """
 
 
 def test_invalid_delimiters_open_none_once_close_none_any(
@@ -211,7 +211,7 @@ def test_invalid_delimiters_open_none_once_close_none_any(
 
     assert (
         str(exc_info.value)
-        == 'No opening delimiter `{` found for `}` in `"(" expression [ factor "-" regex("[0-9]*.[0-9]*") <<}>>`.'
+        == 'No opening delimiter `{` found for `}` in `"(" expression [ factor "-" /[0-9]*.[0-9]*/ <<}>>`.'
     )
 
 
@@ -227,7 +227,7 @@ def invalid_grammar_rule_name_0x40():
            | "-" factor
            | "(" expression ")"
 
-    NUM@BER: regex("[0-9]+\.[0-9]+")
+    NUM@BER: /[0-9]+\.[0-9]+/
     """
 
 
@@ -235,7 +235,7 @@ def test_invalid_grammar_rule_name_0x40(
     invalid_grammar_rule_name_0x40: str,
 ):
     with pytest.raises(InvalidGrammar) as exc_info:
-        _divide_cfg_grammar_into_definitions(invalid_grammar_rule_name_0x40)
+        _divide_cfg_grammar_into_rules(invalid_grammar_rule_name_0x40)
 
     assert str(exc_info.value) == "Invalid rule name: NUM@BER."
 
@@ -243,6 +243,8 @@ def test_invalid_grammar_rule_name_0x40(
 @pytest.fixture
 def invalid_grammar_rule_name_0x2F():
     return r"""
+    start: expression
+    
     expression: term {("+" | "-") term}
 
     term: factor {("*" | "/") factor}
@@ -251,7 +253,7 @@ def invalid_grammar_rule_name_0x2F():
            | "-" factor
            | "(" expression ")"
 
-    NUMBER: regex("[0-9]+\.[0-9]+")
+    NUMBER: /[0-9]+\.[0-9]+/
     """
 
 
@@ -259,7 +261,7 @@ def test_invalid_grammar_rule_name_0x2F(
     invalid_grammar_rule_name_0x2F: str,
 ):
     with pytest.raises(InvalidGrammar) as exc_info:
-        _divide_cfg_grammar_into_definitions(invalid_grammar_rule_name_0x2F)
+        _divide_cfg_grammar_into_rules(invalid_grammar_rule_name_0x2F)
 
     assert str(exc_info.value) == "Invalid rule name: fact/or."
 
@@ -275,7 +277,7 @@ def invalid_grammar_rule_name_0x5E():
            | "-" factor
            | "(" expression ")"
 
-    NUMBER: regex("[0-9]+\.[0-9]+")
+    NUMBER: /[0-9]+\.[0-9]+/
     """
 
 
@@ -283,7 +285,7 @@ def test_invalid_grammar_rule_name_0x5E(
     invalid_grammar_rule_name_0x5E: str,
 ):
     with pytest.raises(InvalidGrammar) as exc_info:
-        _divide_cfg_grammar_into_definitions(invalid_grammar_rule_name_0x5E)
+        _divide_cfg_grammar_into_rules(invalid_grammar_rule_name_0x5E)
 
     assert str(exc_info.value) == "Invalid rule name: ter^m."
 
@@ -299,7 +301,7 @@ def invalid_grammar_missing_start():
            | "-" factor
            | "(" expression ")"
 
-    NUMBER: regex("[0-9]+\.[0-9]+")
+    NUMBER: /[0-9]+\.[0-9]+/
     """
 
 
@@ -307,7 +309,7 @@ def test_invalid_grammar_missing_start(
     invalid_grammar_missing_start: str,
 ):
     with pytest.raises(InvalidGrammar) as exc_info:
-        _divide_cfg_grammar_into_definitions(invalid_grammar_missing_start)
+        _divide_cfg_grammar_into_rules(invalid_grammar_missing_start)
 
     assert str(exc_info.value) == "The symbol `start` is non-existant."
 
@@ -329,7 +331,7 @@ def invalid_grammar_redefinition():
            | "-" factor
            | "(" expression ")"
 
-    NUMBER: regex("[0-9]+\.[0-9]+")
+    NUMBER: /[0-9]+\.[0-9]+/
     """
 
 
@@ -337,7 +339,7 @@ def test_invalid_grammar_redefinition(
     invalid_grammar_redefinition: str,
 ):
     with pytest.raises(InvalidGrammar) as exc_info:
-        _divide_cfg_grammar_into_definitions(invalid_grammar_redefinition)
+        _divide_cfg_grammar_into_rules(invalid_grammar_redefinition)
 
     assert str(exc_info.value) == "Redefinition of grammar rule: factor."
 
@@ -355,7 +357,7 @@ def invalid_grammar_join_colons_multiple():
            | "-" factor
            | "(" expression ")"
 
-    NUMBER: regex("[0-9]+\.[0-9]+")
+    NUMBER: /[0-9]+\.[0-9]+/
     """
 
 
@@ -363,7 +365,7 @@ def test_invalid_grammar_join_colons_multiple(
     invalid_grammar_join_colons_multiple: str,
 ):
     with pytest.raises(InvalidGrammar) as exc_info:
-        _divide_cfg_grammar_into_definitions(invalid_grammar_join_colons_multiple)
+        _divide_cfg_grammar_into_rules(invalid_grammar_join_colons_multiple)
 
     assert (
         str(exc_info.value)
@@ -384,7 +386,7 @@ def invalid_grammar_sepr_colons_multiple():
            | "-" factor
            | "(" expression ")"
 
-    NUMBER: regex("[0-9]+\.[0-9]+")
+    NUMBER: /[0-9]+\.[0-9]+/
     """
 
 
@@ -392,7 +394,7 @@ def test_invalid_grammar_sepr_colons_multiple(
     invalid_grammar_sepr_colons_multiple: str,
 ):
     with pytest.raises(InvalidGrammar) as exc_info:
-        _divide_cfg_grammar_into_definitions(invalid_grammar_sepr_colons_multiple)
+        _divide_cfg_grammar_into_rules(invalid_grammar_sepr_colons_multiple)
 
     assert (
         str(exc_info.value)

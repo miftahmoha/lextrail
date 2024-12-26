@@ -3,12 +3,9 @@ from matplotlib import pyplot as plt
 from matplotlib.widgets import TextBox
 import numpy as np
 
-from cfg_parse.cfg_guide.guide import CFGGuide
-from cfg_parse.draw import (
-    _MockLLM,
-    _animate_get_guided_response,
-    _setup_symbol_graph_networkx,
-)
+from lextrail.guide.guide import CFGGuide
+from lextrail.render.draw import _setup_symbol_graph_networkx
+from lextrail.render.simulate import _MockLLM, _get_partial_guided_response
 
 
 def gify_cfg_guide(cfg_grammar: str):
@@ -22,11 +19,11 @@ def gify_cfg_guide(cfg_grammar: str):
     figure, axes = plt.subplots(1, max_num_plots, figsize=(18, 11))
 
     # Create text box
-    text_box_ax = plt.axes([0.1, 0.05, 0.8, 0.05])
+    text_box_ax = plt.axes([0.1, 0.05, 0.8, 0.05])  # type: ignore
     text_box = TextBox(text_box_ax, "Output:")
 
     # Set cursor index
-    text_box.cursor_index = None
+    text_box.cursor_index = None  # type: ignore
 
     # Adjust layout to make room for text box
     plt.subplots_adjust(bottom=0.2)
@@ -34,7 +31,7 @@ def gify_cfg_guide(cfg_grammar: str):
     chosen_symbol, chosen_symbol_hist = None, None
 
     while True:
-        chosen_symbol, chosen_symbol_hist = _animate_get_guided_response(
+        chosen_symbol, chosen_symbol_hist = _get_partial_guided_response(
             cfg_guide_obj, chosen_symbol, chosen_symbol_hist, mock_llm
         )
 
@@ -60,7 +57,7 @@ def gify_cfg_guide(cfg_grammar: str):
 
         # Convert plot to image
         figure.canvas.draw()
-        image = np.frombuffer(figure.canvas.tostring_rgb(), dtype="uint8")
+        image = np.frombuffer(figure.canvas.tostring_rgb(), dtype="uint8")  # type: ignore
         image = image.reshape(figure.canvas.get_width_height()[::-1] + (3,))
         frames.append(image)
 

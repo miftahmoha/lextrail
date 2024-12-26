@@ -1,0 +1,298 @@
+import re
+from collections import defaultdict, deque
+from typing import Deque
+
+from lextrail.base import OrderedSet, Symbol, SymbolGraph, SymbolType
+from lextrail.exceptions import (
+    InvalidDelimiters,
+    InvalidSymbol,
+    InvalidRegex,
+    MissingQuote,
+    MissingSlash,
+)
+from lextrail.helpers import _is_end_def_symbol, _is_escaped
+
+
+def _build_symbol_from_string(symbol_str: str) -> Symbol:
+    if symbol_str.startswith('"') and symbol_str.endswith('"'):
+        node = Symbol(symbol_str, SymbolType.TERMINAL)
+
+    elif symbol_str.startswith("/") and symbol_str.endswith("/"):
+        # Index to strip `symbol` from `regex()`.
+        start = symbol_str.find("/")
+
+        # Check if regex is valid, throw an exception otherwise.
+        _check_if_valid_regex(symbol_str[start + 1 : -1])
+
+        node = Symbol(symbol_str[start + 1 : -1], SymbolType.REGEX)
+
+    elif symbol_str in "()[]{}<>|*?+":
+        node = Symbol(symbol_str, SymbolType.SPECIAL)
+
+    else:
+        node = Symbol(symbol_str, SymbolType.NON_TERMINAL)
+
+    return node
+
+
+def _is_valid_symbol_syntax(symbol_str: str) -> bool:
+    # Special characters REGEX.
+    regex = re.compile(r"[@_!#$%^&*()<>?/\\|}~:]")
+
+    def _is_terminal(symbol_str: str):
+        return symbol_str[0] == '"' and symbol_str[-1] == '"'
+
+    def _is_non_terminal(symbol_str: str):
+        return (
+            symbol_str[0] != '"'
+            and symbol_str[-1] != '"'
+            and (regex.search(symbol_str) is None)
+        )
+
+    def _is_regex(symbol_str: str):
+        return symbol_str.startswith("/") and symbol_str.endswith("/")
+
+    def _is_special_symbol(symbol_str: str):
+        return symbol_str in "()[]{}/<>|*+?" and len(symbol_str) == 1
+
+    return (
+        _is_terminal(symbol_str)
+        or _is_non_terminal(symbol_str)
+        or _is_regex(symbol_str)
+        or _is_special_symbol(symbol_str)
+    )
+
+
+# Checks if regex is valid.
+def _check_if_valid_regex(pattern):
+    try:
+        re.compile(pattern)
+        return True
+    except re.error:
+        raise InvalidRegex(f"The regex expression {pattern} is invalid.")
+
+
+# This checks if the symbol's syntax is correct.
+def _check_symbol_syntax(symbol_def_str: list[str]):
+    for symbol_str in symbol_def_str:
+        # 1) Check for symbol validity.
+        if not _is_valid_symbol_syntax(symbol_str):
+            raise InvalidSymbol(f"Invalid symbol name {symbol_str}.")
+
+
+# Throws exception if delimiters are invalid.
+def _check_for_delimiter_coherence(symbol_def_str: list[str]):
+    stack_delim_tracker: Deque[tuple[int, str]] = deque()
+
+    delim_dict: dict[str, str] = {")": "(", "]": "[", "}": "{", ">": "<"}
+    # We capture the index to send useful error messages.
+    for symbol_index, symbol_str in enumerate(symbol_def_str):
+        if symbol_str in "([{<":
+            stack_delim_tracker.append((symbol_index, symbol_str))
+
+        elif symbol_str in ")]}>":
+            in_delim = delim_dict[symbol_str]
+            if not stack_delim_tracker or stack_delim_tracker[-1][1] != in_delim:
+                raise InvalidDelimiters(
+                    f'No opening delimiter `{in_delim}` found for `{symbol_str}` in `{" ".join(symbol_def_str[:symbol_index])} <<{symbol_def_str[symbol_index]}>>`.'
+                )
+            stack_delim_tracker.pop()
+
+    # Raise an exception if the stack is not empty.
+    if stack_delim_tracker:
+        symbol_index, symbol_str = stack_delim_tracker[-1]
+        raise InvalidDelimiters(
+            f'Non enclosed delimiter `{symbol_str}` in `{" ".join(symbol_def_str[:symbol_index+1])}`.'
+        )
+
+
+# This checks if the definition is correct.
+def _check_for_errors_symbol_def(symbol_def_str: list[str]):
+    _check_symbol_syntax(symbol_def_str)
+    _check_for_delimiter_coherence(symbol_def_str)
+
+
+def _split_symbols(symbol_def_str: str) -> list[str]:
+    in_quote = False
+    in_regex = False
+    is_escaped_quote = False
+    result = []
+    current = []
+    i = 0
+
+    while i < len(symbol_def_str):
+        current_character = symbol_def_str[i]
+
+        # Dealing with regex expressions.
+        if current_character == "/" and not in_regex and not in_quote:
+            if current:
+                result.append("".join(current))
+                current.clear()
+            current.append(current_character)
+            in_regex = not in_regex
+
+        elif (
+            current_character == "/"
+            and in_regex
+            and not in_quote
+            and not _is_escaped(symbol_def_str, i - 1)
+        ):
+            result.append("".join(current) + current_character)
+            current.clear()
+            in_regex = not in_regex
+
+        # Dealing with an escaped quote "\"".
+        # `"` is used as symbol delimiters for terminals (`"<symbol_name>"`), but for the user to express `"`
+        # as a terminal, he/she needs to escape it as follows "\"".
+        elif (
+            current_character == "\\"
+            and not _is_escaped(symbol_def_str, i - 1)
+            and symbol_def_str[i + 1] == '"'
+            and in_quote
+        ):
+            is_escaped_quote = not is_escaped_quote
+
+        # Dealing with `|`.
+        elif current_character == "|" and not in_quote and not in_regex:
+            if current:
+                result.append("".join(current))
+                current.clear()
+            result.append(current_character)
+            i += 1
+            continue
+
+        # Converting ()*, ()+ and ()? syntax to standard.
+        # [TODO] Add it to tests.
+        # [TODO] We'll remove standard syntax gradually.
+        elif (
+            current_character == ")"
+            and i + 1 < len(symbol_def_str)
+            and symbol_def_str[i + 1] in "+*?"
+            and not in_quote
+            and not in_regex
+        ):
+            map_to_standard: dict[str, tuple[str, str]] = {
+                "*": ("{", "}"),
+                "+": ("<", ">"),
+                "?": ("[", "]"),
+            }
+            if current:
+                result.append("".join(current))
+                current.clear()
+            # Convert `*+?` to standard `)]}`.
+            result.append(map_to_standard[symbol_def_str[i + 1]][1])
+            # Convert `*+?` to standard `([{`.
+            is_outside_stack: bool = False
+            for idx in reversed(range(len(result))):
+                if result[idx] == "(":
+                    if is_outside_stack:
+                        is_outside_stack = not is_outside_stack
+                    else:
+                        result[idx] = map_to_standard[symbol_def_str[i + 1]][0]
+                        break
+                elif result[idx] == ")":
+                    is_outside_stack = not is_outside_stack
+            # Jump over `*+?`.
+            i += 2
+            continue
+
+        # Dealing with special delimiters.
+        elif current_character in "()[]{}<>" and not in_quote and not in_regex:
+            # Separating delimiters from non-terminal symbols.
+            if current:
+                result.append("".join(current))
+                current.clear()
+            result.append(current_character)
+
+        # Dealing with quotes.
+        elif current_character == '"':
+            if in_regex:
+                current.append('"')
+
+            elif is_escaped_quote:
+                current.append('"')
+                is_escaped_quote = not is_escaped_quote
+
+            elif in_quote:
+                current.append('"')
+                result.append("".join(current))
+                current.clear()
+                in_quote = not in_quote
+
+            else:
+                if current:
+                    result.append("".join(current))
+                    current.clear()
+                current.append(current_character)
+                in_quote = not in_quote
+
+        # Dealing with spaces.
+        elif current_character.isspace():
+            if not in_quote and not in_regex:
+                if current:
+                    result.append("".join(current))
+                    current.clear()
+
+            else:
+                current.append(current_character)
+
+        else:
+            current.append(current_character)
+
+        i += 1
+
+    if current:
+        result.append("".join(current))
+
+    if in_quote:
+        raise MissingQuote(
+            'Quote `"` is missing, terminals should be expressed as "<terminal_name>".'
+        )
+
+    if in_regex:
+        raise MissingSlash(
+            "Slash `/` is missing, regex should be expressed as /<regex_content>/."
+        )
+
+    return result
+
+
+def _convert_str_def_to_str_queue(symbol_def: str) -> Deque[str]:
+    symbols = _split_symbols(symbol_def)
+
+    # Check for errors.
+    _check_for_errors_symbol_def(symbols)
+
+    # Add initial delimiters.
+    symbols = ["("] + symbols + [")"]
+
+    queue: Deque = deque()
+    for symbol in symbols:
+        queue.append(symbol)
+
+    return queue
+
+
+"""
+    Skipping rule.
+"""
+
+
+def _get_once_initial_end_def_symbols(symbol_graph: SymbolGraph):
+    once_end_def_symbols_in_tree: list[Symbol] = []
+    once_end_def_symbols_in_initials: list[Symbol] = []
+
+    for symbol_initial in symbol_graph.initials:
+        if _is_end_def_symbol(symbol_initial):
+            once_end_def_symbols_in_initials.append(symbol_initial)
+
+    for symbol_successors in symbol_graph.tree.values():
+        for symbol_successor in symbol_successors:
+            if _is_end_def_symbol(
+                symbol_successor
+            ) and symbol_successor not in once_end_def_symbols_in_tree + list(
+                symbol_graph.finals
+            ):
+                once_end_def_symbols_in_tree.append(symbol_successor)
+
+    return once_end_def_symbols_in_tree, once_end_def_symbols_in_initials

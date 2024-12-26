@@ -85,10 +85,10 @@ class SymbolType(Enum):
 @dataclass
 class SymbolGraph:
     tree: dict[Symbol, OrderedSet[Symbol]] = field(
-        default_factory=lambda: defaultdict(OrderedSet)
-    )
-    initials: OrderedSet[Symbol] = field(default_factory=OrderedSet)
-    finals: OrderedSet[Symbol] = field(default_factory=OrderedSet)
+        default_factory=lambda: defaultdict(OrderedSet)  # type: ignore
+    )  # type: ignore
+    initials: OrderedSet[Symbol] = field(default_factory=OrderedSet)  # type: ignore
+    finals: OrderedSet[Symbol] = field(default_factory=OrderedSet)  # type: ignore
 
     def __eq__(self, other) -> bool:
         if isinstance(other, SymbolGraph):
