@@ -96,6 +96,7 @@ By understanding and implementing these constructs, you can build a robust regex
 from typing import Optional
 from enum import Enum
 import string
+import math
 
 from lextrail.exceptions import InvalidRegex
 
@@ -459,5 +460,87 @@ def _regex_negate_pass(regex_chunks: list[str]) -> list[str]:
 # (1) We deal with this here, '\\[' will be '"["' and not '"\\["'.
 # (2) We deal with this in the main parsing unit, terminals will automatically deal with
 # escaped characters (better).
-def convert_regex_to_custom_syntax(regex: str):
-    pass
+def convert_regex_to_custom_syntax(regex_chunks: list[str]):
+    result: list[str] = []
+    current: list[str] = []
+    i = 0
+
+    while i < len(regex_chunks):
+        current_chunk: str = regex_chunks[i]
+
+        # Converting [abcd] to (a|b|c|d).
+        if current_chunk == "[":
+            # `[` and `]` get replaced by `(` and `)`.
+            result.append("(")
+            # The elements should already be assembled in the expand pass.
+            assert (
+                regex_chunks[i + 1] == "]" or regex_chunks[i + 2] == "]"
+            ), f"`[]` was not assembled."
+            if regex_chunks[i + 1] != "]":
+                result.append("|".join(regex_chunks[i + 1]))
+                result.append(")")
+                i += 3
+                continue
+            else:
+                result.append(")")
+                i += 2
+
+        elif current_chunk == "{":
+            # Exception will be raised if a quantifier `{}` is empty or
+            # not in the correct format `{x?, y?}`/`{x}`.
+            interval = regex_chunks[i + 1].split(",")
+            if len(interval) == 2:
+                min, max = interval
+                min = int(min) if min else 0
+                max = int(max) if max else math.inf
+            else:
+                min = int(interval[0])
+                max = 0
+            # [NOTE] Having a `*+?` before `{` will lead to a syntactic error,
+            # detectable with `re`.
+            if result[-1] == ")":
+                is_outside_stack = False
+                start_idx = 0
+                for idx in reversed(range(len(result[:-1]))):
+                    if result[idx] == "(":
+                        if is_outside_stack:
+                            is_outside_stack = not is_outside_stack
+                        else:
+                            start_idx = idx
+                            break
+                    elif result[idx] == ")":
+                        is_outside_stack = not is_outside_stack
+                length = len(result[start_idx:])
+                for _ in range(min - 1):
+                    result.extend(result[start_idx : start_idx + length])
+                if max != math.inf:
+                    # There is always an instance, if `min` is 0,
+                    # then reuse for max.
+                    if min == 0:
+                        result.append("?")
+                        max -= 1
+                    for _ in range(max):  # type: ignore
+                        result.extend(result[start_idx : start_idx + length])
+                        result.append("?")
+                else:
+                    # `min` can't be 0, {,} is invalid and it'll throw an exception.
+                    result.extend(result[start_idx : start_idx + length])
+                    result.append("*")
+                i += 3
+                continue
+            else:
+                # [TODO] Support for unparenthesed for single characters such as "c"?
+                # in main parsing unit.
+                result[-1] += result[-1][-1] * min
+                if max != math.inf:
+                    result.extend(["(", result[-1][-1], ")", "?"] * (max - 1))  # type: ignore
+                else:
+                    result.extend(["(", result[-1][-1], ")", "*"])  # type: ignore
+                i += 3
+                continue
+
+        else:
+            result.append(current_chunk)
+        i += 1
+
+    return result
