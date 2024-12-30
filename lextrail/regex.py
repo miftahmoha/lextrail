@@ -93,11 +93,19 @@ When implementing a regex to FSM converter, you need to handle these constructs 
 By understanding and implementing these constructs, you can build a robust regex to FSM converter.
 """
 
-from typing import Optional
-from enum import Enum
-import string
 import math
+import string
+from enum import Enum
+from typing import Optional
 
+# Added exceptions:
+# Throw error for backreferences.
+# Throw error for lookarounds.
+# Throw error for unicode.
+# Throw error for unescaped `/`.
+# Throw error for invalid quantifier (includes only `{x?, y?}` with `x` and `y` integers,
+# `{}` not allowed).
+# Throw error for escaping `unescapable` escaped characters
 from lextrail.exceptions import InvalidRegex
 
 # [NOTE] Don't forget special characters, we parse considering to some special character
@@ -221,7 +229,7 @@ def _regex_split_pass(regex_str: str) -> list[str]:
                     )
                 )
             ):
-                raise InvalidRegex(f"Lookarounds are not supported yet.")
+                raise InvalidRegex("Lookarounds are not supported yet.")
             # Leaving the scope.
             if current_character in ")]}":
                 current_delimiter = None
@@ -235,11 +243,11 @@ def _regex_split_pass(regex_str: str) -> list[str]:
 
         # [NOT SUPPORTED] Send exception for backreferences.
         elif current_character.isdigit() and _is_escaped(regex_str, i - 1):
-            raise InvalidRegex(f"Backreferences are not supported yet.")
+            raise InvalidRegex("Backreferences are not supported yet.")
 
         # [NOT SUPPORTED] Send exception for unicode characters.
         elif current_character == "u" and _is_escaped(regex_str, i - 1):
-            raise InvalidRegex(f"Unicode characters are not supported yet.")
+            raise InvalidRegex("Unicode characters are not supported yet.")
 
         # Dealing with (range) character sets.
         elif current_character == "-" and not _is_escaped(regex_str, i - 1):
@@ -281,16 +289,37 @@ def _regex_split_pass(regex_str: str) -> list[str]:
 
         # Send exception if `/` is not escaped.
         elif current_character == "/" and not _is_escaped(regex_str, i - 1):
-            raise InvalidRegex(f"`/` must be escaped in {regex_str[:i+1]} ")
-
-        # (1) Dealing with character classes.
-        # (2) Dealing with newlines `\n` and tabs `\t`.
-        elif current_character in "dDwWsSnt" and _is_escaped(regex_str, i - 1):
-            # [NOTE] Ignoring `\d\D\w\W\s\S` as special characters inside a `[]`.
             if current_delimiter == DelimType.BRACKETS:
                 current.append("\\" + current_character)  # Needs to be escaped.
                 i += 1
                 continue
+            else:
+                raise InvalidRegex(f"`/` must be escaped in {regex_str[:i+1]} ")
+
+        # Send exception if `unescapable` characters are escaped.
+        # Escapable characters `.^$*+?|()[]{}\\/dDwWsSntru` or digits.
+        # [TODO] Is the list complete?
+        elif (
+            current_character == "\\"
+            and not _is_escaped(regex_str, i - 1)
+            and regex_str[i + 1] not in ".^$*+?|()[]{}\\/dDwWsSntru"
+        ):
+            # Backreferences are handled elsewhere.
+            if not regex_str[i + 1].isdigit():
+                raise InvalidRegex(
+                    f"{regex_str[i + 1]} must not be escaped in {regex_str[:i+2]} "
+                )
+
+        # (1) Dealing with character classes.
+        # (2) Dealing with newlines `\n`, tabs `\t` and carriage return `\r`.
+        # [NOTE] Character classes and `\n`, `\t`,`\r`sustain behavior inside `[]`.
+        # [NOTE] Correct for any valid (`.^$*+?|()[]{}\\/dDwWsSnt`) escaped character.
+        elif current_character in "dDwWsSntr" and _is_escaped(regex_str, i - 1):
+            # [NOTE] Ignoring `\d\D\w\W\s\S` as special characters inside a `[]`.
+            # if current_delimiter == DelimType.BRACKETS:
+            #     current.append("\\" + current_character)  # Needs to be escaped.
+            #     i += 1
+            #     continue
             # Avoids empty characters.
             if current[:-1]:
                 result.append("".join(current[:-1]))
@@ -315,7 +344,7 @@ def _regex_split_pass(regex_str: str) -> list[str]:
         # to regex("^example$").
         elif current_character in "^" and current_delimiter == DelimType.BRACKETS:
             if regex_str[i - 1] == "[" and not _is_escaped(regex_str, i - 2):
-                assert len(current) == 0, f"`current` should be empty."
+                assert len(current) == 0, "`current` should be empty."
                 result.append(current_character)
             else:
                 current.append("\\" + current_character)  # Needs to be escaped.
@@ -460,9 +489,8 @@ def _regex_negate_pass(regex_chunks: list[str]) -> list[str]:
 # (1) We deal with this here, '\\[' will be '"["' and not '"\\["'.
 # (2) We deal with this in the main parsing unit, terminals will automatically deal with
 # escaped characters (better).
-def convert_regex_to_custom_syntax(regex_chunks: list[str]):
+def _regex_normalize_pass(regex_chunks: list[str]):
     result: list[str] = []
-    current: list[str] = []
     i = 0
 
     while i < len(regex_chunks):
@@ -475,9 +503,21 @@ def convert_regex_to_custom_syntax(regex_chunks: list[str]):
             # The elements should already be assembled in the expand pass.
             assert (
                 regex_chunks[i + 1] == "]" or regex_chunks[i + 2] == "]"
-            ), f"`[]` was not assembled."
+            ), "`[]` was not assembled."
             if regex_chunks[i + 1] != "]":
-                result.append("|".join(regex_chunks[i + 1]))
+                # result.append("|".join(regex_chunks[i + 1]))
+                assembled: list[str] = []
+                j = 0
+                while j < len(regex_chunks[i + 1]):
+                    current_character = regex_chunks[i + 1][j]
+                    if current_character == "\\":
+                        assembled.append(regex_chunks[i + 1][j : j + 2])
+                        j += 2
+                        continue
+                    else:
+                        assembled.append(current_character)
+                        j += 1
+                result.append("|".join(assembled))
                 result.append(")")
                 i += 3
                 continue
@@ -499,17 +539,17 @@ def convert_regex_to_custom_syntax(regex_chunks: list[str]):
             # [NOTE] Having a `*+?` before `{` will lead to a syntactic error,
             # detectable with `re`.
             if result[-1] == ")":
-                is_outside_stack = False
+                stack_idx = 0
                 start_idx = 0
                 for idx in reversed(range(len(result[:-1]))):
                     if result[idx] == "(":
-                        if is_outside_stack:
-                            is_outside_stack = not is_outside_stack
+                        if stack_idx != 0:
+                            stack_idx -= 1
                         else:
                             start_idx = idx
                             break
                     elif result[idx] == ")":
-                        is_outside_stack = not is_outside_stack
+                        stack_idx += 1
                 length = len(result[start_idx:])
                 for _ in range(min - 1):
                     result.extend(result[start_idx : start_idx + length])
@@ -529,8 +569,6 @@ def convert_regex_to_custom_syntax(regex_chunks: list[str]):
                 i += 3
                 continue
             else:
-                # [TODO] Support for unparenthesed for single characters such as "c"?
-                # in main parsing unit.
                 result[-1] += result[-1][-1] * min
                 if max != math.inf:
                     result.extend(["(", result[-1][-1], ")", "?"] * (max - 1))  # type: ignore
