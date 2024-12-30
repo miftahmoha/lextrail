@@ -1,7 +1,7 @@
 from collections import defaultdict, deque
 from typing import Union
 
-from lextrail.base import Symbol, SymbolType, OrderedSet, SymbolGraph
+from lextrail.base import OrderedSet, Symbol, SymbolGraph, SymbolType
 from lextrail.exceptions import SymbolNotFound
 
 
@@ -27,7 +27,7 @@ def _fetch_end_def_symbol_in_sequence(
             symbols.append(symbol)
 
     if len(symbols) == 0:
-        raise SymbolNotFound(f"No `END_DEF` symbol was found.")
+        raise SymbolNotFound("No `END_DEF` symbol was found.")
 
     return symbols
 

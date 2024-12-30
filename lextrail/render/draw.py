@@ -5,9 +5,10 @@ import matplotlib.pyplot as plt
 import networkx as nx
 
 from lextrail.base import CFGStatefulGraph, Symbol, SymbolGraph, SymbolType
-from lextrail.helpers import _is_end_def_symbol
-
-from lextrail.helpers import _get_symbols_from_generated_symbol_graph
+from lextrail.helpers import (
+    _get_symbols_from_generated_symbol_graph,
+    _is_end_def_symbol,
+)
 
 
 def _setup_symbol_graph_networkx(

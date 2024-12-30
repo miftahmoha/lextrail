@@ -1,11 +1,11 @@
 import imageio
+import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib.widgets import TextBox
-import numpy as np
 
 from lextrail.guide.guide import CFGGuide
 from lextrail.render.draw import _setup_symbol_graph_networkx
-from lextrail.render.simulate import _MockLLM, _get_partial_guided_response
+from lextrail.render.simulate import _get_partial_guided_response, _MockLLM
 
 
 def gify_cfg_guide(cfg_grammar: str):

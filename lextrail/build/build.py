@@ -7,11 +7,11 @@ from lextrail.build.passes import (
     _get_once_initial_end_def_symbols,
 )
 from lextrail.helpers import (
-    _is_end_def_symbol,
-    _is_end_def_symbol_in_sequence,
+    _discard_single_nodes_from_tree,
     _fetch_end_def_symbol_in_sequence,
     _fetch_symbol_predecessors_in_tree,
-    _discard_single_nodes_from_tree,
+    _is_end_def_symbol,
+    _is_end_def_symbol_in_sequence,
 )
 
 
@@ -114,7 +114,7 @@ def connect_symbol_graph(
     assert len(once_end_def_symbols_in_initials) in [
         0,
         1,
-    ], f"Repeated `END_DEF` symbol in initials."
+    ], "Repeated `END_DEF` symbol in initials."
     if len(once_end_def_symbols_in_initials) == 1:
         symbol_graph_lhs_copy.initials.discard(once_end_def_symbols_in_initials[0])
         symbol_graph_lhs_copy.initials.extend(symbol_graph_rhs_copy.initials)
@@ -302,7 +302,7 @@ def cast_symbol_graph(
             # or the finals.
             assert (
                 len(initial_end_def_symbols) == 1
-            ), f"Initials should contain one `END_DEF` symbol"
+            ), "Initials should contain one `END_DEF` symbol"
 
             # Discard the `END_DEF` symbol from the initials.
             symbol_graph_copy.initials.discard(initial_end_def_symbols[0])

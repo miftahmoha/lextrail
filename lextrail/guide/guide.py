@@ -5,12 +5,12 @@ from typing import Deque, Optional
 
 from lextrail.base import CFGStatefulGraph, Symbol, SymbolGraph, SymbolType
 from lextrail.build.build import build_symbol_graph
+from lextrail.exceptions import ParsingError
 from lextrail.guide.passes import (
     _check_for_potential_infinite_loops,
     _divide_cfg_grammar_into_rules,
 )
 from lextrail.helpers import _is_end_def_symbol
-from lextrail.exceptions import ParsingError
 
 CFGGenerationState = Optional[Deque[CFGStatefulGraph]]
 

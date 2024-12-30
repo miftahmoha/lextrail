@@ -12,19 +12,12 @@ from lextrail.base import (
     SymbolGraph,
     SymbolType,
 )
-from lextrail.build.passes import (
-    _build_symbol_from_string,
-    _split_symbols,
-)
+from lextrail.build.passes import _build_symbol_from_string, _split_symbols
+from lextrail.exceptions import InfiniteLoop, InvalidGrammar, SymbolNotFound
 from lextrail.helpers import (
+    _fetch_non_terminal_from_content_in_graph,
     _fetch_symbol_predecessors_in_tree,
     _is_escaped,
-    _fetch_non_terminal_from_content_in_graph,
-)
-from lextrail.exceptions import (
-    InfiniteLoop,
-    InvalidGrammar,
-    SymbolNotFound,
 )
 
 
@@ -37,8 +30,8 @@ def _is_not_valid_rule_name(rule: str):
 def _split_cfg_grammar(grammar: str) -> list[str]:
     in_quote = False
     in_regex = False
-    rules = []
-    current = []
+    rules: list[str] = []
+    current: list[str] = []
     i = 0
 
     while i < len(grammar):

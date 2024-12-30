@@ -1,12 +1,12 @@
 import re
-from collections import defaultdict, deque
+from collections import deque
 from typing import Deque
 
-from lextrail.base import OrderedSet, Symbol, SymbolGraph, SymbolType
+from lextrail.base import Symbol, SymbolGraph, SymbolType
 from lextrail.exceptions import (
     InvalidDelimiters,
-    InvalidSymbol,
     InvalidRegex,
+    InvalidSymbol,
     MissingQuote,
     MissingSlash,
 )
@@ -116,8 +116,8 @@ def _split_symbols(symbol_def_str: str) -> list[str]:
     in_quote = False
     in_regex = False
     is_escaped_quote = False
-    result = []
-    current = []
+    result: list[str] = []
+    current: list[str] = []
     i = 0
 
     while i < len(symbol_def_str):
@@ -182,16 +182,16 @@ def _split_symbols(symbol_def_str: str) -> list[str]:
             # Convert `*+?` to standard `)]}`.
             result.append(map_to_standard[symbol_def_str[i + 1]][1])
             # Convert `*+?` to standard `([{`.
-            is_outside_stack: bool = False
+            stack_idx = 0
             for idx in reversed(range(len(result))):
                 if result[idx] == "(":
-                    if is_outside_stack:
-                        is_outside_stack = not is_outside_stack
+                    if stack_idx != 0:
+                        stack_idx -= 1
                     else:
                         result[idx] = map_to_standard[symbol_def_str[i + 1]][0]
                         break
                 elif result[idx] == ")":
-                    is_outside_stack = not is_outside_stack
+                    stack_idx += 1
             # Jump over `*+?`.
             i += 2
             continue

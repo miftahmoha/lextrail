@@ -1,9 +1,8 @@
-import re
 import random
+import re
 import warnings
-from typing import Optional
 from dataclasses import dataclass, field
-
+from typing import Optional
 
 import exrex
 import matplotlib.pyplot as plt
@@ -11,10 +10,10 @@ from matplotlib.animation import FuncAnimation
 from matplotlib.widgets import TextBox
 
 from lextrail.base import Symbol, SymbolType
-from lextrail.helpers import _is_end_def_symbol
-from lextrail.guide.guide import CFGGuide, CFGGenerationState
-from lextrail.render.draw import _setup_symbol_graph_networkx
 from lextrail.exceptions import ParsingError
+from lextrail.guide.guide import CFGGenerationState, CFGGuide
+from lextrail.helpers import _is_end_def_symbol
+from lextrail.render.draw import _setup_symbol_graph_networkx
 
 
 def _validate_regex(string: str, pattern: str) -> bool:
