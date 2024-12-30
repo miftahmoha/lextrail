@@ -1,6 +1,7 @@
 import re
 from collections import deque
 from typing import Deque
+import warnings
 
 from lextrail.base import Symbol, SymbolGraph, SymbolType
 from lextrail.exceptions import (
@@ -125,6 +126,10 @@ def _split_symbols(symbol_def_str: str) -> list[str]:
 
         # Dealing with regex expressions.
         if current_character == "/" and not in_regex and not in_quote:
+            warnings.warn(
+                "Ensure that `/` is always escaped inside the regex expression `/`-> `\\/` to avoid an undefined behavior",
+            )
+
             if current:
                 result.append("".join(current))
                 current.clear()
