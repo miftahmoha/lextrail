@@ -118,6 +118,9 @@ from lextrail.exceptions import InvalidRegex
 # List of all printable ASCII characters except newline
 ALL_CHARACTERS = list(string.printable[:-5])  # Exclude newline, carriage return, etc.
 
+# REGEX characters that have been escaped when out of context.
+ESCAPED_REGEX_WHEN_NO_CTX = "()[]{}|.*?+-"
+
 
 class DelimType(Enum):
     PARENTHESIS = 1
@@ -252,7 +255,7 @@ def _regex_split_pass(regex_str: str) -> list[str]:
         # Dealing with (range) character sets.
         elif current_character == "-" and not _is_escaped(regex_str, i - 1):
             if current_delimiter == DelimType.BRACKETS:
-                # Makes sure there is a characters between `-`.
+                # Makes sure there are characters between `-`.
                 if current and regex_str[i + 1] != "]":
                     # Pop the start `0` in `[0-9]`.
                     current.pop()
@@ -265,14 +268,15 @@ def _regex_split_pass(regex_str: str) -> list[str]:
                     i += 2
                     continue
                 else:
-                    current.append(current_character)
-            # [???] We need to separate between `-` that are inside `[]` and the ones outside.
-            # [???] We'll escape the ones outside.
+                    current.append("\\" + current_character)
+            # [NOTE] Usually, it's easy to differentiate between a special `-` and a standard one,
+            # since `[x-y]` is splitted as ["[", "x-y", "]"]. However, we'll escape it to have
+            # consistency.
             else:
                 if current:
                     result.append("".join(current))
                     current.clear()
-                result.append(current_character)
+                result.append("\\" + current_character)
 
         # Dealing with quantifiers.
         elif current_character in "*+?":
@@ -312,10 +316,11 @@ def _regex_split_pass(regex_str: str) -> list[str]:
 
         # (1) Dealing with character classes.
         # (2) Dealing with newlines `\n`, tabs `\t` and carriage return `\r`.
-        # [NOTE] Character classes and `\n`, `\t`,`\r`sustain behavior inside `[]`.
+        # [NOTE] Character classes and `\n`, `\t`,`\r` sustain behavior inside `[]`.
         # [NOTE] Correct for any valid (`.^$*+?|()[]{}\\/dDwWsSnt`) escaped character.
         elif current_character in "dDwWsSntr" and _is_escaped(regex_str, i - 1):
             # [NOTE] Ignoring `\d\D\w\W\s\S` as special characters inside a `[]`.
+            # [NOTE] They shouldn't be ignored.
             # if current_delimiter == DelimType.BRACKETS:
             #     current.append("\\" + current_character)  # Needs to be escaped.
             #     i += 1
@@ -470,6 +475,45 @@ def _regex_expand_pass(regex_chunks: list[str]):
     return expanded
 
 
+def _add_context_escapes(regex_chunk: str) -> str:
+    result: list[str] = []
+    i = 0
+
+    while i < len(regex_chunk):
+        current_character = regex_chunk[i]
+
+        # [NOTE] Condition (2) is important, during the last pass, we remove the escapes and if
+        # `\\` which comes from the negation is not escaped, it's going to be removed.
+        # It may seems repetitive, since we could get rid of the escapes in this pass,
+        # however, the last pass should have context from the escapes to function correctly
+        # or it'll lead to undefined behavior.
+        if current_character in ESCAPED_REGEX_WHEN_NO_CTX or current_character == "\\":
+            result.append("\\")
+
+        result.append(current_character)
+        i += 1
+
+    return "".join(result)
+
+
+def _del_context_escapes(regex_chunk: str) -> str:
+    result: list[str] = []
+    i = 0
+
+    while i < len(regex_chunk):
+        current_character = regex_chunk[i]
+
+        if current_character in ESCAPED_REGEX_WHEN_NO_CTX and _is_escaped(
+            regex_chunk, i - 1
+        ):
+            result.pop()
+
+        result.append(current_character)
+        i += 1
+
+    return "".join(result)
+
+
 def _regex_negate_pass(regex_chunks: list[str]) -> list[str]:
     negated: list[str] = []
     i = 0
@@ -477,7 +521,12 @@ def _regex_negate_pass(regex_chunks: list[str]) -> list[str]:
     while i < len(regex_chunks):
         current_chunk: str = regex_chunks[i]
         if current_chunk[0] == "^" and regex_chunks[i - 1] == "[":
-            negated.append(_sub_exp_all(current_chunk))
+            # [NOTE] If context is not disabled during the negation pass, the context
+            # is going to be ruined. Since the next steps need the context,
+            # it'll lead to incorrect behavior.
+            negated.append(
+                _add_context_escapes(_sub_exp_all(_del_context_escapes(current_chunk)))
+            )
         else:
             negated.append(current_chunk)
         i += 1
@@ -505,11 +554,15 @@ def _regex_normalize_pass(regex_chunks: list[str]):
                 regex_chunks[i + 1] == "]" or regex_chunks[i + 2] == "]"
             ), "`[]` was not assembled."
             if regex_chunks[i + 1] != "]":
-                # result.append("|".join(regex_chunks[i + 1]))
                 assembled: list[str] = []
                 j = 0
                 while j < len(regex_chunks[i + 1]):
                     current_character = regex_chunks[i + 1][j]
+                    # [TODO] There is a problem here, normally when I expand inside [..], I add
+                    # specific escapes that have a meaning to the parser. However, if ^ is applied,
+                    # then it needs to be applied carefully. Also normalizing should be carefull
+                    # aswell. Here I think I'm dealing with my own escaped but when they come for
+                    # negate, it's undefined behavior.
                     if current_character == "\\":
                         assembled.append(regex_chunks[i + 1][j : j + 2])
                         j += 2
@@ -579,6 +632,84 @@ def _regex_normalize_pass(regex_chunks: list[str]):
 
         else:
             result.append(current_chunk)
+        i += 1
+
+    return result
+
+
+def _is_chunk_pipe(regex_chunk: str) -> bool:
+    i = 0
+
+    while i < len(regex_chunk):
+        if regex_chunk[i] == "|" and not _is_escaped(regex_chunk, i - 1):
+            return True
+
+        i += 1
+
+    return False
+
+
+def _split_pipe(pipe_chunk: str) -> list[str]:
+    current: list[str] = []
+    result: list[str] = []
+    i = 0
+
+    while i < len(pipe_chunk):
+        current_character = pipe_chunk[i]
+
+        if current_character == "|" and not _is_escaped(pipe_chunk, i - 1):
+            result.append('"' + "".join(current) + '"')
+            current.clear()
+
+        elif current_character == "\\" and not _is_escaped(pipe_chunk, i - 1):
+            i += 1
+            continue
+
+        else:
+            current.append(current_character)
+
+        i += 1
+
+    result.append('"' + "".join(current) + '"')
+
+    return result
+
+
+def _discard_escapes(regex_chunk: str) -> str:
+    result: list[str] = []
+    i = 0
+
+    while i < len(regex_chunk):
+        current_character = regex_chunk[i]
+
+        if current_character == "\\" and not _is_escaped(regex_chunk, i - 1):
+            i += 1
+            continue
+
+        else:
+            result.append(current_character)
+
+        i += 1
+
+    return "".join(result)
+
+
+def _regex_terminalize_pass(regex_chunks: list[str]):
+    result: list[str] = []
+    i = 0
+
+    while i < len(regex_chunks):
+        current_chunk = regex_chunks[i]
+
+        if current_chunk in "()|*?+":
+            result.append(current_chunk)
+
+        elif _is_chunk_pipe(current_chunk):
+            result.append("|".join(_split_pipe(current_chunk)))
+
+        else:
+            result.append('"' + _discard_escapes(current_chunk) + '"')
+
         i += 1
 
     return result
