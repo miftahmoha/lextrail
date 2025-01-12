@@ -284,10 +284,33 @@ def _regex_split_pass(regex_str: str) -> list[str]:
                 current.append("\\" + current_character)  # Needs to be escaped.
             else:
                 if not _is_escaped(regex_str, i - 1):
-                    if current:
-                        result.append("".join(current))
-                        current.clear()
-                    result.append(current_character)
+                    # `current` should be empty.
+                    if result[-1] in ")]}":
+                        result.append(current_character)
+                    # [NOTE] If there is nothing before `*+?`, `re` will take care of that.
+                    else:
+                        if current:
+                            result.extend(
+                                [
+                                    "".join(current[:-1]),
+                                    "(",
+                                    current[-1],
+                                    ")",
+                                    current_character,
+                                ]
+                            )
+                            current.clear()
+                        # [NOTE] We can separate special characters into two categories,
+                        # (1) are escaped and single which are "()[]{}|.-", those are
+                        # "contextually" escaped but also are "single" (they're not grouped with other
+                        # characters). (2) are "contextually" escaped, but can be grouped with other characters
+                        # which are "/-". (1) are found in result while (2) are found in current.
+                        # If the last character is a (1), but
+                        # without `()[]{}` (dealt with above) as well as `|` (leads to an error if precedented with
+                        # `*+?`), only `.` remains then.
+                        # `.` will be replaced by [..], wrapping with `(..)` is useless.
+                        else:
+                            assert result[-1] == ".", "Only `.` character is allowed."
                 else:
                     current.append(current_character)
 
