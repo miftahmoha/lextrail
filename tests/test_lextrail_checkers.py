@@ -1,13 +1,13 @@
 import pytest
 
 from lextrail.build.build import _convert_str_def_to_str_queue
-from lextrail.guide.guide import _divide_cfg_grammar_into_rules
 from lextrail.exceptions import (
     InvalidDelimiters,
     InvalidGrammar,
     InvalidSymbol,
     MissingQuote,
 )
+from lextrail.guide.guide import _divide_cfg_grammar_into_rules
 
 # ----------------------------- InvalidSymbol -----------------------------
 
@@ -64,7 +64,7 @@ def test_invalid_symbol_non_terminal_with_special_characters_0x40(
 
 @pytest.fixture
 def invalid_symbol_non_terminal_with_special_characters_0x2F():
-    return """ /[0-9]*.[0-9]*/ | "-" factor |  "(" expre/ssion ")" """
+    return """ /[0-9]*.[0-9]*/ | "-" factor |  "(" expre#ssion ")" """
 
 
 def test_invalid_symbol_non_terminal_with_special_characters_0x2F(
@@ -75,7 +75,7 @@ def test_invalid_symbol_non_terminal_with_special_characters_0x2F(
             invalid_symbol_non_terminal_with_special_characters_0x2F
         )
 
-    assert str(exc_info.value) == "Invalid symbol name expre/ssion."
+    assert str(exc_info.value) == "Invalid symbol name expre#ssion."
 
 
 @pytest.fixture
@@ -244,12 +244,12 @@ def test_invalid_grammar_rule_name_0x40(
 def invalid_grammar_rule_name_0x2F():
     return r"""
     start: expression
-    
+
     expression: term {("+" | "-") term}
 
     term: factor {("*" | "/") factor}
 
-    fact/or: NUMBER
+    fact&or: NUMBER
            | "-" factor
            | "(" expression ")"
 
@@ -263,7 +263,7 @@ def test_invalid_grammar_rule_name_0x2F(
     with pytest.raises(InvalidGrammar) as exc_info:
         _divide_cfg_grammar_into_rules(invalid_grammar_rule_name_0x2F)
 
-    assert str(exc_info.value) == "Invalid rule name: fact/or."
+    assert str(exc_info.value) == "Invalid rule name: fact&or."
 
 
 @pytest.fixture

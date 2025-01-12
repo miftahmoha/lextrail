@@ -4,14 +4,14 @@ import pytest
 from lark import Lark
 from transformers import AutoTokenizer
 
+from lextrail.exceptions import InfiniteLoop
 from lextrail.guide.guide import CFGGuide
 from lextrail.guide.passes import update_for_possible_single_token_combinations
-from lextrail.render.simulate import _get_full_guided_response
 from lextrail.helpers import (
-    _fetch_terminal_from_content_in_sequence,
     _extract_content_from_symbols,
+    _fetch_terminal_from_content_in_sequence,
 )
-from lextrail.exceptions import InfiniteLoop
+from lextrail.render.simulate import _get_full_guided_response
 
 
 @pytest.fixture

@@ -6,7 +6,6 @@ from lextrail.build.build import (
     connect_symbol_graph,
     construct_symbol_subgraph,
 )
-
 from lextrail.helpers import _get_symbols_from_generated_symbol_graph
 
 # ----------------------------- construct_symbol_subgraph -----------------------------
@@ -1016,6 +1015,8 @@ def test_build_graph_def_with_in_and_out_or_with_special_delimiters_once_any(
     finals = OrderedSet([symbols['")"|0']])
 
     true_symbol_graph = SymbolGraph(initials=initials, tree=tree, finals=finals)
+
+    assert true_symbol_graph == generated_symbol_graph
 
 
 @pytest.fixture
