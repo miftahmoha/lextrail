@@ -32,7 +32,6 @@ Certainly! Regular expressions (regex) have a variety of constructs that allow f
 
 5. **Quantifiers (`{}`):**
    - `a{3}`: Matches exactly 3 occurrences of `a`.
-   # [NOTE] Need to implement `?` into `<>` in main parsing unit.
    - `a{2,4}`: Matches between 2 and 4 occurrences of `a`.
    - `a{2,}`: Matches 2 or more occurrences of `a`.
 
@@ -98,6 +97,7 @@ import string
 from enum import Enum
 from typing import Optional
 
+
 # Added exceptions:
 # Throw error for backreferences.
 # Throw error for lookarounds.
@@ -107,6 +107,7 @@ from typing import Optional
 # `{}` not allowed).
 # Throw error for escaping `unescapable` escaped characters
 from lextrail.exceptions import InvalidRegex
+from lextrail.helpers import _is_escaped
 
 # [NOTE] Don't forget special characters, we parse considering to some special character
 # `.` or `[`, `-`..
@@ -122,28 +123,17 @@ ALL_CHARACTERS = list(string.printable[:-5])  # Exclude newline, carriage return
 ESCAPED_REGEX_WHEN_NO_CTX = "()[]{}|.*?+-"
 
 
-class DelimType(Enum):
+class DelimiterType(Enum):
     PARENTHESIS = 1
     BRACKETS = 2
     BRACES = 3
 
 
-delim_dict = {
-    "(": DelimType.PARENTHESIS,
-    "[": DelimType.BRACKETS,
-    "{": DelimType.BRACES,
+delimiter_mapping = {
+    "(": DelimiterType.PARENTHESIS,
+    "[": DelimiterType.BRACKETS,
+    "{": DelimiterType.BRACES,
 }
-
-
-# Finds out if some character is escaped.
-def _is_escaped(regex_str: str, index: int) -> bool:
-    if index < 0:
-        return False
-    j = 0
-    while regex_str[index] == "\\":
-        j += 1
-        index -= 1
-    return j % 2 != 0
 
 
 def _is_valid_quantifier(content: str):
@@ -189,7 +179,7 @@ def _is_valid_quantifier(content: str):
 def _regex_split_pass(regex_str: str) -> list[str]:
     result: list[str] = []
     current: list[str] = []
-    current_delimiter: Optional[DelimType] = None
+    current_delimiter: Optional[DelimiterType] = None
     i = 0
 
     while i < len(regex_str):
@@ -199,13 +189,13 @@ def _regex_split_pass(regex_str: str) -> list[str]:
         if current_character in "()[]{}" and not _is_escaped(regex_str, i - 1):
             # `{}` has an weird behavior, it's escaped automatically if it doesn't act as
             # a quantifier. To avoid such behavior, we'll throw an exception.
-            if current_character == "}" and current_delimiter == DelimType.BRACES:
+            if current_character == "}" and current_delimiter == DelimiterType.BRACES:
                 if not _is_valid_quantifier("".join(current)):
                     raise InvalidRegex(f"{regex_str[:i+1]} is not a valid quantifier.")
             # Ignore capturing groups.
             if (
                 current_character == "("
-                and current_delimiter != DelimType.BRACKETS
+                and current_delimiter != DelimiterType.BRACKETS
                 and i + 3 <= len(regex_str)
                 and regex_str[i + 1 : i + 3] == "?:"
             ):
@@ -213,14 +203,14 @@ def _regex_split_pass(regex_str: str) -> list[str]:
                     result.append("".join(current))
                     current.clear()
                 result.append(current_character)
-                current_delimiter = delim_dict.get(current_character)
+                current_delimiter = delimiter_mapping.get(current_character)
                 i += 3
                 continue
             # [TODO] Whenever forward accessing `i + x`, need to make sure that there is data.
             # [NOT SUPPORTED] Send exception for lookarounds.
             if (
                 current_character == "("
-                and current_delimiter != DelimType.BRACKETS
+                and current_delimiter != DelimiterType.BRACKETS
                 and (
                     (
                         i + 3 <= len(regex_str)
@@ -237,7 +227,9 @@ def _regex_split_pass(regex_str: str) -> list[str]:
             if current_character in ")]}":
                 current_delimiter = None
             # Useful for detecting (range) character sets.
-            current_delimiter = delim_dict.get(current_character, current_delimiter)
+            current_delimiter = delimiter_mapping.get(
+                current_character, current_delimiter
+            )
             # Avoids empty strings.
             if current:
                 result.append("".join(current))
@@ -254,7 +246,7 @@ def _regex_split_pass(regex_str: str) -> list[str]:
 
         # Dealing with (range) character sets.
         elif current_character == "-" and not _is_escaped(regex_str, i - 1):
-            if current_delimiter == DelimType.BRACKETS:
+            if current_delimiter == DelimiterType.BRACKETS:
                 # Makes sure there are characters between `-`.
                 if current and regex_str[i + 1] != "]":
                     # Pop the start `0` in `[0-9]`.
@@ -280,7 +272,7 @@ def _regex_split_pass(regex_str: str) -> list[str]:
 
         # Dealing with quantifiers.
         elif current_character in "*+?":
-            if current_delimiter == DelimType.BRACKETS:
+            if current_delimiter == DelimiterType.BRACKETS:
                 current.append("\\" + current_character)  # Needs to be escaped.
             else:
                 if not _is_escaped(regex_str, i - 1):
@@ -316,7 +308,7 @@ def _regex_split_pass(regex_str: str) -> list[str]:
 
         # Send exception if `/` is not escaped.
         elif current_character == "/" and not _is_escaped(regex_str, i - 1):
-            if current_delimiter == DelimType.BRACKETS:
+            if current_delimiter == DelimiterType.BRACKETS:
                 current.append("\\" + current_character)  # Needs to be escaped.
                 i += 1
                 continue
@@ -344,7 +336,7 @@ def _regex_split_pass(regex_str: str) -> list[str]:
         elif current_character in "dDwWsSntr" and _is_escaped(regex_str, i - 1):
             # [NOTE] Ignoring `\d\D\w\W\s\S` as special characters inside a `[]`.
             # [NOTE] They shouldn't be ignored.
-            # if current_delimiter == DelimType.BRACKETS:
+            # if current_delimiter == DelimiterType.BRACKETS:
             #     current.append("\\" + current_character)  # Needs to be escaped.
             #     i += 1
             #     continue
@@ -357,7 +349,7 @@ def _regex_split_pass(regex_str: str) -> list[str]:
         # Dealing with special characters `.|`.
         elif current_character in ".|" and not _is_escaped(regex_str, i - 1):
             # [NOTE] Ignoring `.|` as special characters inside a `[]`.
-            if current_delimiter == DelimType.BRACKETS:
+            if current_delimiter == DelimiterType.BRACKETS:
                 current.append("\\" + current_character)  # Needs to be escaped.
                 i += 1
                 continue
@@ -370,7 +362,7 @@ def _regex_split_pass(regex_str: str) -> list[str]:
         # [???] Dealing with anchors, they're irrelevant in our context. CFGs are expected to have deterministic properties.
         # [???] If user asks for a `regex("example")` in a CFG, it is equivalent
         # to regex("^example$").
-        elif current_character in "^" and current_delimiter == DelimType.BRACKETS:
+        elif current_character in "^" and current_delimiter == DelimiterType.BRACKETS:
             if regex_str[i - 1] == "[" and not _is_escaped(regex_str, i - 2):
                 assert len(current) == 0, "`current` should be empty."
                 result.append(current_character)
@@ -682,6 +674,7 @@ def _split_pipe(pipe_chunk: str) -> list[str]:
 
         if current_character == "|" and not _is_escaped(pipe_chunk, i - 1):
             result.append('"' + "".join(current) + '"')
+            result.append(current_character)
             current.clear()
 
         elif current_character == "\\" and not _is_escaped(pipe_chunk, i - 1):
@@ -728,7 +721,7 @@ def _regex_terminalize_pass(regex_chunks: list[str]):
             result.append(current_chunk)
 
         elif _is_chunk_pipe(current_chunk):
-            result.append("|".join(_split_pipe(current_chunk)))
+            result.extend(_split_pipe(current_chunk))
 
         else:
             result.append('"' + _discard_escapes(current_chunk) + '"')
@@ -736,3 +729,11 @@ def _regex_terminalize_pass(regex_chunks: list[str]):
         i += 1
 
     return result
+
+
+def _regex_apply_passes(regex_str: str):
+    return _regex_terminalize_pass(
+        _regex_normalize_pass(
+            _regex_negate_pass(_regex_expand_pass(_regex_split_pass(regex_str)))
+        )
+    )

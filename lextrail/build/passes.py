@@ -1,9 +1,11 @@
 import re
+import warnings
+from os import getenv
 from collections import deque
 from typing import Deque
-import warnings
 
 from lextrail.base import Symbol, SymbolGraph, SymbolType
+from lextrail.regex import _regex_apply_passes
 from lextrail.exceptions import (
     InvalidDelimiters,
     InvalidRegex,
@@ -146,9 +148,9 @@ def _split_symbols(symbol_def_str: str) -> list[str]:
             current.clear()
             in_regex = not in_regex
 
-        # Dealing with an escaped quote "\"".
+        # Dealing with an escaped quote "\\"".
         # `"` is used as symbol delimiters for terminals (`"<symbol_name>"`), but for the user to express `"`
-        # as a terminal, he/she needs to escape it as follows "\"".
+        # as a terminal, he/she needs to escape it as follows "\\"".
         elif (
             current_character == "\\"
             and not _is_escaped(symbol_def_str, i - 1)
@@ -167,7 +169,6 @@ def _split_symbols(symbol_def_str: str) -> list[str]:
             continue
 
         # Converting ()*, ()+ and ()? syntax to standard.
-        # [TODO] Add it to tests.
         # [TODO] We'll remove standard syntax gradually.
         elif (
             current_character == ")"
@@ -262,11 +263,32 @@ def _split_symbols(symbol_def_str: str) -> list[str]:
     return result
 
 
+def _parse_regex(symbols: list[str]):
+    result: list[str] = []
+    i = 0
+
+    while i < len(symbols):
+        current_symbol = symbols[i]
+
+        if current_symbol.startswith("/") and current_symbol.endswith("/"):
+            result.extend(_regex_apply_passes(current_symbol[1:-1]))
+
+        else:
+            result.append(current_symbol)
+
+        i += 1
+
+    return result
+
+
 def _convert_str_def_to_str_queue(symbol_def: str) -> Deque[str]:
     symbols = _split_symbols(symbol_def)
 
     # Check for errors.
     _check_for_errors_symbol_def(symbols)
+
+    if int(getenv("PARSE_REGEX", 1)):
+        symbols = _parse_regex(symbols)
 
     # Add initial delimiters.
     symbols = ["("] + symbols + [")"]
