@@ -32,3 +32,7 @@ class ParsingError(Exception):
 
 class InfiniteLoop(Exception):
     pass
+
+
+class CombineError(Exception):
+    pass
