@@ -1,11 +1,10 @@
 import re
 import warnings
-from os import getenv
 from collections import deque
+from os import getenv
 from typing import Deque
 
 from lextrail.base import Symbol, SymbolGraph, SymbolType
-from lextrail.regex import _regex_apply_passes
 from lextrail.exceptions import (
     InvalidDelimiters,
     InvalidRegex,
@@ -14,6 +13,7 @@ from lextrail.exceptions import (
     MissingSlash,
 )
 from lextrail.helpers import _is_end_def_symbol, _is_escaped
+from lextrail.regex import _regex_apply_passes
 
 
 def _build_symbol_from_string(symbol_str: str) -> Symbol:
@@ -40,7 +40,7 @@ def _build_symbol_from_string(symbol_str: str) -> Symbol:
 
 def _is_valid_symbol_syntax(symbol_str: str) -> bool:
     # Special characters REGEX.
-    regex = re.compile(r"[@_!#$%^&*()<>?/\\|}~:]")
+    regex = re.compile(r"[@!#$%^&*()<>?/\\|}~:]")
 
     def _is_terminal(symbol_str: str):
         return symbol_str[0] == '"' and symbol_str[-1] == '"'

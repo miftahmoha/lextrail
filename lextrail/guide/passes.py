@@ -23,7 +23,7 @@ from lextrail.helpers import (
 
 def _is_not_valid_rule_name(rule: str):
     # Special characters REGEX.
-    regex = re.compile(r"[@_!#$%^&*()<>?/\\|}~:]")
+    regex = re.compile(r"[@!#$%^&*()<>?/\\|}~:]")
     return regex.search(rule) is not None
 
 
