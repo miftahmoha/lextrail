@@ -279,9 +279,8 @@ def _regex_split_pass(regex_str: str) -> list[str]:
                     else:
                         if current:
                             result.extend(
-                                ["".join(current[:-1])]
-                                if len(current) > 1
-                                else [] + ["(", current[-1], ")", current_character]
+                                (["".join(current[:-1])] if len(current) > 1 else [])
+                                + ["(", current[-1], ")", current_character]
                             )
                             current.clear()
                         # [NOTE] We can separate special characters into two categories,
@@ -565,11 +564,6 @@ def _regex_normalize_pass(regex_chunks: list[str]):
                 j = 0
                 while j < len(regex_chunks[i + 1]):
                     current_character = regex_chunks[i + 1][j]
-                    # [TODO] There is a problem here, normally when I expand inside [..], I add
-                    # specific escapes that have a meaning to the parser. However, if ^ is applied,
-                    # then it needs to be applied carefully. Also normalizing should be carefull
-                    # aswell. Here I think I'm dealing with my own escaped but when they come for
-                    # negate, it's undefined behavior.
                     if current_character == "\\":
                         assembled.append(regex_chunks[i + 1][j : j + 2])
                         j += 2
@@ -702,7 +696,7 @@ def _discard_escapes(regex_chunk: str) -> str:
     return "".join(result)
 
 
-def _regex_terminalize_pass(regex_chunks: list[str]):
+def _regex_terminalize_pass(regex_chunks: list[str], _IS_TEST_VERSION: bool = False):
     result: list[str] = []
     i = 0
 
@@ -713,7 +707,10 @@ def _regex_terminalize_pass(regex_chunks: list[str]):
             result.append(current_chunk)
 
         elif _is_chunk_pipe(current_chunk):
-            result.extend(_split_pipe(current_chunk))
+            if _IS_TEST_VERSION:
+                result.append("".join(_split_pipe(current_chunk)))
+            else:
+                result.extend(_split_pipe(current_chunk))
 
         else:
             result.append('"' + _discard_escapes(current_chunk) + '"')

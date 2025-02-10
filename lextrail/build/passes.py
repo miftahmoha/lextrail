@@ -15,6 +15,12 @@ from lextrail.exceptions import (
 from lextrail.helpers import _is_end_def_symbol, _is_escaped
 from lextrail.regex import _regex_apply_passes
 
+_MAP_TO_STANDARD: dict[str, tuple[str, str]] = {
+    "*": ("{", "}"),
+    "+": ("<", ">"),
+    "?": ("[", "]"),
+}
+
 
 def _build_symbol_from_string(symbol_str: str) -> Symbol:
     if symbol_str.startswith('"') and symbol_str.endswith('"'):
@@ -84,6 +90,7 @@ def _check_symbol_syntax(symbol_def_str: list[str]):
 
 
 # Throws exception if delimiters are invalid.
+# [TODO] Need to update delimiters for messages.
 def _check_for_delimiter_coherence(symbol_def_str: list[str]):
     stack_delim_tracker: Deque[tuple[int, str]] = deque()
 
@@ -177,16 +184,11 @@ def _split_symbols(symbol_def_str: str) -> list[str]:
             and not in_quote
             and not in_regex
         ):
-            map_to_standard: dict[str, tuple[str, str]] = {
-                "*": ("{", "}"),
-                "+": ("<", ">"),
-                "?": ("[", "]"),
-            }
             if current:
                 result.append("".join(current))
                 current.clear()
             # Convert `*+?` to standard `)]}`.
-            result.append(map_to_standard[symbol_def_str[i + 1]][1])
+            result.append(_MAP_TO_STANDARD[symbol_def_str[i + 1]][1])
             # Convert `*+?` to standard `([{`.
             stack_idx = 0
             for idx in reversed(range(len(result))):
@@ -194,13 +196,27 @@ def _split_symbols(symbol_def_str: str) -> list[str]:
                     if stack_idx != 0:
                         stack_idx -= 1
                     else:
-                        result[idx] = map_to_standard[symbol_def_str[i + 1]][0]
+                        result[idx] = _MAP_TO_STANDARD[symbol_def_str[i + 1]][0]
                         break
                 elif result[idx] == ")":
                     stack_idx += 1
             # Jump over `*+?`.
             i += 2
             continue
+
+        # Converting <symbol><quantifier> to (<symbol>)<quantifier>.
+        # [TODO] We'll remove standard syntax gradually.
+        # [TODO] Needs a test.
+        if current_character in "*+?" and symbol_def_str[i - 1] != ")":
+            symbol = "".join(current) if current else result.pop()
+            result.extend(
+                [
+                    _MAP_TO_STANDARD[current_character][0],
+                    symbol,
+                    _MAP_TO_STANDARD[current_character][1],
+                ]
+            )
+            current.clear()
 
         # Dealing with special delimiters.
         elif current_character in "()[]{}<>" and not in_quote and not in_regex:
@@ -281,6 +297,84 @@ def _parse_regex(symbols: list[str]):
     return result
 
 
+def _split_terminals_into_chars(symbols: list[str]) -> list[str]:
+    result: list[str] = []
+    i = 0
+
+    while i < len(symbols):
+        current_symbol = symbols[i]
+
+        if current_symbol.startswith('"') and current_symbol.endswith('"'):
+            result.extend([f'"{symbol}"' for symbol in list(current_symbol[1:-1])])
+
+        else:
+            result.append(current_symbol)
+
+        i += 1
+
+    return result
+
+
+def _clear_ambiguity(symbols: list[str]) -> None:
+    _AMBIGUOUS_SYMBOLS = ">}"
+    _DELIMITERS_OPEN, _DELIMITERS_CLOSE = "([{<", ")]}>"
+
+    assembled: list[str] = []
+    is_initial = True
+    is_delimited = False
+    i = 0
+    index = 0
+
+    def _extract_content(symbols: list[str], i: int) -> list[str]:
+        assembled: list[str] = []
+        stack_idx: int = 0
+
+        for idx in reversed(range(i + 1)):
+            current_symbol = symbols[idx]
+
+            # Get the content of outer delimiters.
+            if current_symbol in _DELIMITERS_OPEN:
+                if stack_idx != 0:
+                    stack_idx -= 1
+
+                    if stack_idx == 0:
+                        assembled.insert(0, current_symbol)
+                        break
+
+            if current_symbol in _DELIMITERS_CLOSE:
+                stack_idx += 1
+
+            assembled.insert(0, current_symbol)
+
+        return assembled
+
+    while i < len(symbols):
+        current_symbol = symbols[i]
+
+        if current_symbol in _AMBIGUOUS_SYMBOLS:
+            assembled = _extract_content(symbols, i)[1:-1]
+            index = i
+
+        else:
+            if assembled:
+                if current_symbol in _DELIMITERS_OPEN and is_initial:
+                    is_delimited, is_initial = not is_delimited, not is_initial
+                else:
+                    popped_symbol = assembled.pop(0)
+                    if current_symbol == popped_symbol:
+                        if not assembled:
+                            end = i + 1
+                            del symbols[
+                                index + 1 : end if not is_delimited else end + 1
+                            ]
+                            i -= end - index - 1
+                    else:
+                        is_delimited, is_initial = not is_delimited, not is_initial
+                        assembled.clear()
+
+        i += 1
+
+
 def _convert_str_def_to_str_queue(symbol_def: str) -> Deque[str]:
     symbols = _split_symbols(symbol_def)
 
@@ -289,6 +383,9 @@ def _convert_str_def_to_str_queue(symbol_def: str) -> Deque[str]:
 
     if int(getenv("PARSE_REGEX", 1)):
         symbols = _parse_regex(symbols)
+
+    if int(getenv("SPLIT_CHARS", 1)):
+        symbols = _split_terminals_into_chars(symbols)
 
     # Add initial delimiters.
     symbols = ["("] + symbols + [")"]
