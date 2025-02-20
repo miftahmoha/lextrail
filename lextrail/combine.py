@@ -177,7 +177,7 @@ def _update_for_possible_single_token_combinations(
         next_terminals_w_history_copy = deepcopy(next_terminals_w_history)
         next_token_graphs_copy = deepcopy(next_token_graphs)
 
-        for symbol_next, hist_next in next_terminals_w_history_copy.items():
+        for symbol_next, state_next in next_terminals_w_history_copy.items():
             current_next_token_graphs = _fetch_next_graphs(
                 symbol_next.content, next_token_graphs_copy, is_head=is_head
             )
@@ -195,12 +195,12 @@ def _update_for_possible_single_token_combinations(
                     )
                     proposals.update(proposal)
 
-                # [NOTE] Control flow deals with case where `current_next_token_graphs`
-                # only contains a finalized graph.
+                # [NOTE] Control flow deals with the case where `current_next_token_graphs` does
+                # only contain a finalized graph.
                 if len(current_next_token_graphs) == 0:
                     continue
 
-                cfg_guide_copy.get_next_terminals(hist_next, symbol_next)
+                cfg_guide_copy.get_next_terminals([symbol_next], [state_next])
 
                 recurse_update(
                     cfg_guide_copy.next_terminals_w_history,

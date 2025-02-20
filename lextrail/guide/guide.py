@@ -1,9 +1,15 @@
 from collections import deque
 from copy import deepcopy
 from functools import wraps
-from typing import Deque, Optional
+from typing import Deque
 
-from lextrail.base import CFGStatefulGraph, Symbol, SymbolGraph, SymbolType
+from lextrail.base import (
+    CFGGenerationState,
+    CFGStatefulGraph,
+    Symbol,
+    SymbolGraph,
+    SymbolType,
+)
 from lextrail.build.build import build_symbol_graph
 from lextrail.exceptions import ParsingError
 from lextrail.guide.passes import (
@@ -11,8 +17,6 @@ from lextrail.guide.passes import (
     _divide_cfg_grammar_into_rules,
 )
 from lextrail.helpers import _is_end_def_symbol
-
-CFGGenerationState = Optional[Deque[CFGStatefulGraph]]
 
 
 def build_cfg_grammar_into_symbol_graphs(cfg_grammar: str) -> dict[str, SymbolGraph]:
@@ -45,9 +49,90 @@ def clear_dict_before_call(dict_name: str):
     return decorator
 
 
+class Guide:
+    built_symbol_graph: SymbolGraph
+    next_terminals_w_history: dict[Symbol, CFGStatefulGraph]
+
+    def __init__(self, definition: str):
+        self.built_symbol_graph = build_symbol_graph(definition)
+        self.next_terminals_w_history = {}
+
+    @clear_dict_before_call("next_terminals_w_history")
+    def get_next_terminals(
+        self,
+        chosen_symbols: list[Symbol] = [],
+        chosen_states: list[CFGStatefulGraph] = [],
+    ):
+        if not chosen_states:
+            if not chosen_symbols:
+                # Turning the symbol graph that'll be added to the stack
+                # into a stateful object `CFGStatefulGraph`.
+                start = CFGStatefulGraph(self.built_symbol_graph, "start")
+                self.get_next_terminals(chosen_states=[start])
+                return
+            else:
+                raise ParsingError(
+                    "`CFGGenerationState` is empty while `chosen_symbols` is not."
+                )
+
+        # Poping the last graphs.
+        last_visit_graphs = [chosen_state.graph for chosen_state in chosen_states]
+
+        if chosen_symbols:
+            # Update the state for `CFGStatefulGraph` to the terminal(s) symbol(s) chosen by the LLM.
+            for chosen_state, chosen_symbol in zip(chosen_states, chosen_symbols):
+                chosen_state.state = chosen_symbol
+            # Get the next sequences.
+            next_sequences = [
+                last_visit_graph.tree[chosen_symbol]
+                for last_visit_graph, chosen_symbol in zip(
+                    last_visit_graphs, chosen_symbols
+                )
+            ]
+        # [NOTE] Sometimes `next_symbols` is returned empty, this can happen when:
+        # (1) You pop from the stack, and the place where you land was a `END-OF-DEFINITON`
+        # non-terminal symbol (we return a `None` chosen symbol after popping from the stack).
+        # (2) The second case where we pass a `chosen_symbols = None` is at the beginning.
+        # Thus, the following will be executed if `start` is connected to one single terminal symbol.
+        # Handles reaching the end of a symbol graph (`next_symbols` being empty).
+        else:
+            # `last_visit_symbol` will be None at the beginning of the process, otherwise it'll have a valid state.
+            last_visit_symbols = [chosen_state.state for chosen_state in chosen_states]
+            # Get the next sequences.
+            next_sequences = [
+                (
+                    last_visit_graph.tree[last_visit_symbol]
+                    if last_visit_symbol is not None
+                    else last_visit_graph.initials
+                )
+                for last_visit_graph, last_visit_symbol in zip(
+                    last_visit_graphs, last_visit_symbols
+                )
+            ]
+
+        # Handles reaching the end of a symbol graph (`next_symbols` being empty).
+        for next_symbols, chosen_state in zip(next_sequences, chosen_states):
+            if not next_symbols:
+                return
+
+        for next_symbols, chosen_state in zip(next_sequences, chosen_states):
+            for next_symbol in next_symbols:
+                if next_symbol.s_type in [
+                    SymbolType.TERMINAL,
+                    SymbolType.REGEX,
+                    SymbolType.NON_TERMINAL,
+                ] or _is_end_def_symbol(next_symbol):
+                    # Pass by value, not by reference.
+                    next_chosen_state = deepcopy(chosen_state)
+                    # Set state to the last visited symbol.
+                    next_chosen_state.state = next_symbol
+                    # Save the next possible terminal `next_symbol` with its history.
+                    self.next_terminals_w_history[next_symbol] = next_chosen_state
+
+
 class CFGGuide:
     built_cfg_grammar: dict[str, SymbolGraph]
-    next_terminals_w_history: dict[Symbol, CFGGenerationState]
+    next_terminals_w_history: dict[Symbol, Deque[CFGStatefulGraph]]
 
     def __init__(self, cfg_grammar: str):
         self.built_cfg_grammar = build_cfg_grammar_into_symbol_graphs(cfg_grammar)
@@ -56,80 +141,105 @@ class CFGGuide:
     @clear_dict_before_call("next_terminals_w_history")
     def get_next_terminals(
         self,
-        generation_state: CFGGenerationState = None,
-        chosen_symbol: Optional[Symbol] = None,
+        chosen_symbols: list[Symbol] = [],
+        chosen_states: list[CFGGenerationState] = [],
     ):
-        if generation_state is None:
-            if chosen_symbol is None:
+        if isinstance(chosen_symbols, Symbol):
+            chosen_symbols = [chosen_symbols]
+
+        if isinstance(chosen_states, Deque) and all(
+            isinstance(x, CFGStatefulGraph) for x in chosen_states
+        ):
+            chosen_states = [chosen_states]
+
+        if not chosen_states:
+            if not chosen_symbols:
                 # Turning the symbol graph that'll be added to the stack
                 # into a stateful object `CFGStatefulGraph`.
                 start = CFGStatefulGraph(self.built_cfg_grammar["start"], "start")
-                self.get_next_terminals(generation_state=deque([start]))
+                self.get_next_terminals(chosen_states=[deque([start])])
                 return
             else:
                 raise ParsingError(
-                    "`CFGGenerationState` is `None` while `chosen_symbol` is not."
+                    "`CFGGenerationState` is `None` while `chosen_symbols` is not."
                 )
 
-        # Poping the last graph.
-        last_visit_graph = generation_state[-1].graph
+        # Poping the last graphs.
+        last_visit_graphs = [chosen_state[-1].graph for chosen_state in chosen_states]
 
-        if chosen_symbol is not None:
-            # Get the next nodes according to `chosen_symbol`, which refers to the (terminal) symbol chosen by the LLM.
-            next_symbols = last_visit_graph.tree[chosen_symbol]
-            # Update the state for `CFGStatefulGraph` to the (terminal) symbol chosen by the LLM.
-            generation_state[-1].state = chosen_symbol
+        if chosen_symbols:
+            # Update the state for `CFGStatefulGraph` to the terminal(s) symbol(s) chosen by the LLM.
+            for chosen_state, chosen_symbol in zip(chosen_states, chosen_symbols):
+                chosen_state[-1].state = chosen_symbol
+            # Get the next sequences.
+            next_sequences = [
+                last_visit_graph.tree[chosen_symbol]
+                for last_visit_graph, chosen_symbol in zip(
+                    last_visit_graphs, chosen_symbols
+                )
+            ]
         # [NOTE] Sometimes `next_symbols` is returned empty, this can happen when:
         # (1) You pop from the stack, and the place where you land was a `END-OF-DEFINITON`
-        # non-terminal symbol (we return a `None` chosen symbol after poping from the stack).
-        # (2) The second case where we pass a `chosen_symbol = None` is at the beggining.
+        # non-terminal symbol (we return a `None` chosen symbol after popping from the stack).
+        # (2) The second case where we pass a `chosen_symbols = []` is at the beginning.
         # Thus, the following will be executed if `start` is connected to one single terminal symbol.
         # Handles reaching the end of a symbol graph (`next_symbols` being empty).
         else:
-            last_visit_symbol = generation_state[-1].state
-            next_symbols = (
-                last_visit_graph.tree[last_visit_symbol]
-                if last_visit_symbol is not None
-                else last_visit_graph.initials
-            )
+            # `last_visit_symbol` will be None at the beginning of the process, otherwise it'll have a valid state.
+            last_visit_symbols = [
+                chosen_state[-1].state for chosen_state in chosen_states
+            ]
+            # Get the next sequences.
+            next_sequences = [
+                (
+                    last_visit_graph.tree[last_visit_symbol]
+                    if last_visit_symbol is not None
+                    else last_visit_graph.initials
+                )
+                for last_visit_graph, last_visit_symbol in zip(
+                    last_visit_graphs, last_visit_symbols
+                )
+            ]
 
         # Handles reaching the end of a symbol graph (`next_symbols` being empty).
-        if not next_symbols:
-            generation_state.pop()
-            # Handles reaching the end of stack.
-            if not generation_state:
+        for next_symbols, chosen_state in zip(next_sequences, chosen_states):
+            if not next_symbols:
+                chosen_state.pop()
+                # Handles reaching the end of stack.
+                if not chosen_state:
+                    return
+                # Should return the last label, but as a symbol of the last symbol graph.
+                self.get_next_terminals(chosen_states=[deepcopy(chosen_state)])
                 return
-            # Should return the last label, but as a symbol of the last symbol graph.
-            self.get_next_terminals(deepcopy(generation_state))
-            return
 
-        for next_symbol in next_symbols:
-            if next_symbol.s_type in [
-                SymbolType.TERMINAL,
-                SymbolType.REGEX,
-            ] or _is_end_def_symbol(next_symbol):
-                # Pass by value, not by reference.
-                updated_generation_state = deepcopy(generation_state)
-                # Set state to the last visited symbol.
-                updated_generation_state[-1].state = next_symbol
-                # Save the next possible terminal `next_symbol` with its history.
-                self.next_terminals_w_history[next_symbol] = updated_generation_state
+        for next_symbols, chosen_state in zip(next_sequences, chosen_states):
+            for next_symbol in next_symbols:
+                if next_symbol.s_type in [
+                    SymbolType.TERMINAL,
+                    SymbolType.REGEX,
+                ] or _is_end_def_symbol(next_symbol):
+                    # Pass by value, not by reference.
+                    next_chosen_state = deepcopy(chosen_state)
+                    # Set state to the last visited symbol.
+                    next_chosen_state[-1].state = next_symbol
+                    # Save the next possible terminal `next_symbol` with its history.
+                    self.next_terminals_w_history[next_symbol] = next_chosen_state
 
-            # Create an additional layer in the stack.
-            if next_symbol.s_type == SymbolType.NON_TERMINAL:
-                # Pass by value, not by reference.
-                updated_generation_state = deepcopy(generation_state)
-                # Set up the state for the bottom stack layer, it'll save where we left for when
-                # we pop the upper stack layer. We would then search for the next symbols from
-                # the last visited `non-terminal` symbol.
-                updated_generation_state[-1].state = next_symbol
-                # Turning the symbol graph that'll be added to the stack
-                # into a stateful object `CFGStatefulGraph`.
-                cfg_stateful_graph = CFGStatefulGraph(
-                    graph=self.built_cfg_grammar[next_symbol.content],
-                    label=next_symbol.content,
-                )
-                # Adding the stateful graph layer to the stack.
-                updated_generation_state.append(cfg_stateful_graph)
-                # Recurse over the added layer.
-                self.get_next_terminals(updated_generation_state)
+                # Create an additional layer in the stack.
+                if next_symbol.s_type == SymbolType.NON_TERMINAL:
+                    # Pass by value, not by reference.
+                    next_chosen_state = deepcopy(chosen_state)
+                    # Set up the state for the bottom stack layer, it'll save where we left for when
+                    # we pop the upper stack layer. We would then search for the next symbols from
+                    # the last visited `non-terminal` symbol.
+                    next_chosen_state[-1].state = next_symbol
+                    # Turning the symbol graph that'll be added to the stack
+                    # into a stateful object `CFGStatefulGraph`.
+                    cfg_stateful_graph = CFGStatefulGraph(
+                        graph=self.built_cfg_grammar[next_symbol.content],
+                        label=next_symbol.content,
+                    )
+                    # Adding the stateful graph layer to the stack.
+                    next_chosen_state.append(cfg_stateful_graph)
+                    # Recurse over the added layer.
+                    self.get_next_terminals(chosen_states=[next_chosen_state])

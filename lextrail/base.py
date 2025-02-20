@@ -119,5 +119,18 @@ class CFGStatefulGraph:
     label: str
     state: Optional[Symbol] = None
 
+    def __bool__(self) -> bool:
+        return bool(self.graph) and bool(self.label) and bool(self.state)
 
-CFGGenerationState = Optional[Deque[CFGStatefulGraph]]
+    def __hash__(self):
+        return hash((self.label, self.state))
+
+    def __eq__(self, other):
+        return (
+            (self.graph == other.graph)
+            and (self.label == other.label)
+            and (self.state == other.state)
+        )
+
+
+CFGGenerationState = Deque[CFGStatefulGraph]

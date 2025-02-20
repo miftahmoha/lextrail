@@ -5,18 +5,18 @@ import matplotlib.pyplot as plt
 import networkx as nx
 
 from lextrail.base import CFGStatefulGraph, Symbol, SymbolGraph, SymbolType
-from lextrail.helpers import (
-    _get_symbols_from_generated_symbol_graph,
-    _is_end_def_symbol,
-)
+from lextrail.helpers import _get_symbols_from_generated_symbol_graph
 
 
 def _setup_symbol_graph_networkx(
     symbol_graph: SymbolGraph,
-    highlight: Optional[Symbol] = None,
+    highlights: list[Optional[Symbol]] = [],
     ax: Optional[matplotlib.axes.Axes] = None,
-    display_headers: bool = False,
+    size: int = 800,
 ):
+    if isinstance(highlights, Symbol):
+        highlights = [highlights]
+
     G = nx.DiGraph()
 
     # Passing by value, not by reference.
@@ -24,21 +24,20 @@ def _setup_symbol_graph_networkx(
 
     symbols = _get_symbols_from_generated_symbol_graph(symbol_graph_copy)
 
-    if display_headers:
-        # Adding initials and finals as `Symbols` for visual purposes.
-        symbol_special_initials, symbol_special_finals = Symbol(
-            "INITIALS", SymbolType.SPECIAL
-        ), Symbol("FINALS", SymbolType.SPECIAL)
-        symbols["INITIALS"], symbols["FINALS"] = (
-            symbol_special_initials,
-            symbol_special_finals,
-        )
+    # Adding initials and finals as `Symbols` for visual purposes.
+    symbol_special_initials, symbol_special_finals = Symbol(
+        "INITIALS", SymbolType.SPECIAL
+    ), Symbol("FINALS", SymbolType.SPECIAL)
+    symbols["INITIALS"], symbols["FINALS"] = (
+        symbol_special_initials,
+        symbol_special_finals,
+    )
 
-        # Adding the connections.
-        (
-            symbol_graph_copy.tree[symbol_special_initials],
-            symbol_graph_copy.tree[symbol_special_finals],
-        ) = (symbol_graph_copy.initials, symbol_graph_copy.finals)
+    # Adding the connections.
+    (
+        symbol_graph_copy.tree[symbol_special_initials],
+        symbol_graph_copy.tree[symbol_special_finals],
+    ) = (symbol_graph_copy.initials, symbol_graph_copy.finals)
 
     labels = {}
 
@@ -54,20 +53,25 @@ def _setup_symbol_graph_networkx(
     pos = nx.nx_agraph.graphviz_layout(G, prog="dot")
 
     # Setting a highlight.
-    if highlight is None:
-        node_color = ["lightblue" for symbol in symbols.values()]
-    elif highlight.s_type == SymbolType.NON_TERMINAL:
+    if not highlights:
+        node_color = ["lightblue" for _ in symbols.values()]
+    else:
         node_color = [
-            "red" if (symbol == highlight) else "lightblue"
-            for symbol in symbols.values()
-        ]
-    elif (
-        highlight.s_type == SymbolType.TERMINAL
-        or highlight.s_type == SymbolType.REGEX
-        or _is_end_def_symbol(highlight)
-    ):
-        node_color = [
-            "orange" if (symbol == highlight) else "lightblue"
+            (
+                "red"
+                if (symbol in highlights and symbol.s_type == SymbolType.NON_TERMINAL)
+                else (
+                    "orange"
+                    if (
+                        symbol in highlights
+                        and (
+                            symbol.s_type == SymbolType.TERMINAL
+                            or symbol.s_type == SymbolType.REGEX
+                        )
+                    )
+                    else "lightblue"
+                )
+            )
             for symbol in symbols.values()
         ]
 
@@ -77,7 +81,7 @@ def _setup_symbol_graph_networkx(
         pos,
         with_labels=True,
         labels=labels,
-        node_size=800,
+        node_size=size,
         node_color=node_color,  # type: ignore
         edgecolors="gray",
         alpha=0.8,
@@ -100,7 +104,7 @@ def draw_cfg_generation_state(cfg_generation_state: Deque[CFGStatefulGraph]):
 
     for i, cfg_stateful_graph in enumerate(cfg_generation_state):
         _setup_symbol_graph_networkx(
-            cfg_stateful_graph.graph, cfg_stateful_graph.state, axes[i]
+            cfg_stateful_graph.graph, [cfg_stateful_graph.state], axes[i]
         )
         axes[i].set_title(f"[Lv.{i}] {cfg_stateful_graph.label}")
 
