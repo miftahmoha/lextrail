@@ -9,6 +9,7 @@ from lextrail.regex import (
     _regex_terminalize_pass,
 )
 
+
 @pytest.fixture
 def regex_email():
     """Regex to match email addresses."""
@@ -83,7 +84,9 @@ def test_regex_email(regex_email: str):
         "+",
     ]
 
-    terminalize_pass_out = _regex_terminalize_pass(normalize_pass_out, _IS_TEST_VERSION=True)
+    terminalize_pass_out = _regex_terminalize_pass(
+        normalize_pass_out, _IS_TEST_VERSION=True
+    )
     assert terminalize_pass_out == [
         "(",
         '"a"|"b"|"c"|"d"|"e"|"f"|"g"|"h"|"i"|"j"|"k"|"l"|"m"|"n"|"o"|"p"|"q"|"r"|"s"|"t"|"u"|"v"|"w"|"x"|"y"|"z"|"A"|"B"|"C"|"D"|"E"|"F"|"G"|"H"|"I"|"J"|"K"|"L"|"M"|"N"|"O"|"P"|"Q"|"R"|"S"|"T"|"U"|"V"|"W"|"X"|"Y"|"Z"|"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"|"_"|"."|"+"|"-"',
@@ -193,7 +196,9 @@ def test_regex_phone_number(regex_phone_number: str):
         ")",
     ]
 
-    terminalize_pass_out = _regex_terminalize_pass(normalize_pass_out, _IS_TEST_VERSION=True)
+    terminalize_pass_out = _regex_terminalize_pass(
+        normalize_pass_out, _IS_TEST_VERSION=True
+    )
     assert terminalize_pass_out == [
         '"("',
         "(",
@@ -357,7 +362,9 @@ def test_regex_url(regex_url: str):
         "*",
     ]
 
-    terminalize_pass_out = _regex_terminalize_pass(normalize_pass_out, _IS_TEST_VERSION=True)
+    terminalize_pass_out = _regex_terminalize_pass(
+        normalize_pass_out, _IS_TEST_VERSION=True
+    )
     assert terminalize_pass_out == [
         "(",
         '"http"',
@@ -479,7 +486,9 @@ def test_regex_date(regex_date: str):
         ")",
     ]
 
-    terminalize_pass_out = _regex_terminalize_pass(normalize_pass_out, _IS_TEST_VERSION=True)
+    terminalize_pass_out = _regex_terminalize_pass(
+        normalize_pass_out, _IS_TEST_VERSION=True
+    )
     assert terminalize_pass_out == [
         "(",
         '"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"',
@@ -599,7 +608,9 @@ def test_regex_hex_color(regex_hex_color: str):
         ")",
     ]
 
-    terminalize_pass_out = _regex_terminalize_pass(normalize_pass_out, _IS_TEST_VERSION=True)
+    terminalize_pass_out = _regex_terminalize_pass(
+        normalize_pass_out, _IS_TEST_VERSION=True
+    )
     assert terminalize_pass_out == [
         '"#"',
         "(",
@@ -694,7 +705,9 @@ def test_regex_username(regex_username: str):
         * 16
     )
 
-    terminalize_pass_out = _regex_terminalize_pass(normalize_pass_out, _IS_TEST_VERSION=True)
+    terminalize_pass_out = _regex_terminalize_pass(
+        normalize_pass_out, _IS_TEST_VERSION=True
+    )
     assert (
         terminalize_pass_out
         == [
@@ -964,7 +977,9 @@ def test_regex_ipv4(regex_ipv4: str):
         ")",
     ]
 
-    terminalize_pass_out = _regex_terminalize_pass(normalize_pass_out, _IS_TEST_VERSION=True)
+    terminalize_pass_out = _regex_terminalize_pass(
+        normalize_pass_out, _IS_TEST_VERSION=True
+    )
     assert terminalize_pass_out == [
         "(",
         "(",
@@ -1155,7 +1170,9 @@ def test_regex_extreme_quantifiers_and_escaped_metacharacters(
         * 10
     )
 
-    terminalize_pass_out = _regex_terminalize_pass(normalize_pass_out, _IS_TEST_VERSION=True)
+    terminalize_pass_out = _regex_terminalize_pass(
+        normalize_pass_out, _IS_TEST_VERSION=True
+    )
     assert (
         terminalize_pass_out
         == [

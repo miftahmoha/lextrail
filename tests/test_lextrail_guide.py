@@ -3,7 +3,7 @@ from lark import Lark
 
 from lextrail.exceptions import InfiniteLoop
 from lextrail.guide.guide import CFGGuide
-from lextrail.render.simulate import _get_full_guided_response
+from lextrail.utils.simulate import _get_full_guided_response
 
 
 @pytest.fixture

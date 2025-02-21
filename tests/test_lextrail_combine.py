@@ -1,16 +1,15 @@
 import pytest
 
-from lextrail.guide.guide import CFGGuide
-from lextrail.helpers import (
-    _extract_content_from_symbols,
-    _fetch_terminal_from_content_in_sequence,
-)
 from lextrail.combine import (
     TokenGraph,
     _convert_vocabulary_into_graphs,
     _update_for_possible_single_token_combinations,
 )
-
+from lextrail.guide.guide import CFGGuide
+from lextrail.helpers import (
+    _extract_content_from_symbols,
+    _fetch_terminal_from_content_in_sequence,
+)
 
 gpt2_vocabulary_subset = [
     "ing",  # Common suffix
@@ -55,7 +54,7 @@ def test_cfg_with_uni_level_combination_no_or_uni_choice(
     gpt2_vocabulary_subset_as_graphs: list[TokenGraph],
 ):
     cfg_object = CFGGuide(cfg_with_uni_level_combination_no_or_uni_choice)
-    cfg_object.get_next_terminals(None, None)
+    cfg_object.get_next_terminals()
 
     next_terminals_w_hist_w_update = _update_for_possible_single_token_combinations(
         cfg_object, gpt2_vocabulary_subset_as_graphs
@@ -96,7 +95,7 @@ def test_cfg_with_mlt_level_combination_no_or_uni_choice(
     gpt2_vocabulary_subset_as_graphs: list[TokenGraph],
 ):
     cfg_object = CFGGuide(cfg_with_mlt_level_combination_no_or_uni_choice)
-    cfg_object.get_next_terminals(None, None)
+    cfg_object.get_next_terminals()
 
     next_terminals_w_hist_w_update = _update_for_possible_single_token_combinations(
         cfg_object, gpt2_vocabulary_subset_as_graphs
@@ -139,7 +138,7 @@ def test_cfg_with_mlt_level_combination_mlt_or_uni_choice(
     gpt2_vocabulary_subset_as_graphs: list[TokenGraph],
 ):
     cfg_object = CFGGuide(cfg_with_mlt_level_combination_mlt_or_uni_choice)
-    cfg_object.get_next_terminals(None, None)
+    cfg_object.get_next_terminals()
 
     next_terminals_w_hist_w_update = _update_for_possible_single_token_combinations(
         cfg_object, gpt2_vocabulary_subset_as_graphs
@@ -180,7 +179,7 @@ def test_cfg_with_mlt_level_combination_uni_or_mlt_choice(
     gpt2_vocabulary_subset_as_graphs: list[TokenGraph],
 ):
     cfg_object = CFGGuide(cfg_with_mlt_level_combination_uni_or_mlt_choice)
-    cfg_object.get_next_terminals(None, None)
+    cfg_object.get_next_terminals()
 
     next_terminals_w_hist_w_update = _update_for_possible_single_token_combinations(
         cfg_object, gpt2_vocabulary_subset_as_graphs
@@ -229,7 +228,7 @@ def test_cfg_with_mlt_level_combination_mlt_or_mlt_choice(
     test_vocabulary_subset_as_graphs: list[TokenGraph],
 ):
     cfg_object = CFGGuide(cfg_with_mlt_level_combination_mlt_or_mlt_choice)
-    cfg_object.get_next_terminals(None, None)
+    cfg_object.get_next_terminals()
 
     next_terminals_w_hist_w_update = _update_for_possible_single_token_combinations(
         cfg_object, test_vocabulary_subset_as_graphs
