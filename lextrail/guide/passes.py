@@ -48,6 +48,9 @@ def _split_cfg_grammar(grammar: str) -> list[str]:
         current.append(current_character)
         i += 1
 
+    if remains := "".join(current).strip():
+        rules.append(remains)
+
     return rules
 
 

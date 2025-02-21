@@ -21,6 +21,8 @@ _MAP_TO_STANDARD: dict[str, tuple[str, str]] = {
     "?": ("[", "]"),
 }
 
+_MAP_CLOSE_TO_OPEN: dict[str, str] = {")": "(", "]": "[", "}": "{", ">": "<"}
+
 
 def _build_symbol_from_string(symbol_str: str) -> Symbol:
     if symbol_str.startswith('"') and symbol_str.endswith('"'):
@@ -94,14 +96,13 @@ def _check_symbol_syntax(symbol_def_str: list[str]):
 def _check_for_delimiter_coherence(symbol_def_str: list[str]):
     stack_delim_tracker: Deque[tuple[int, str]] = deque()
 
-    delim_dict: dict[str, str] = {")": "(", "]": "[", "}": "{", ">": "<"}
     # We capture the index to send useful error messages.
     for symbol_index, symbol_str in enumerate(symbol_def_str):
         if symbol_str in "([{<":
             stack_delim_tracker.append((symbol_index, symbol_str))
 
         elif symbol_str in ")]}>":
-            in_delim = delim_dict[symbol_str]
+            in_delim = _MAP_CLOSE_TO_OPEN[symbol_str]
             if not stack_delim_tracker or stack_delim_tracker[-1][1] != in_delim:
                 raise InvalidDelimiters(
                     f'No opening delimiter `{in_delim}` found for `{symbol_str}` in `{" ".join(symbol_def_str[:symbol_index])} <<{symbol_def_str[symbol_index]}>>`.'
@@ -207,7 +208,11 @@ def _split_symbols(symbol_def_str: str) -> list[str]:
         # Converting <symbol><quantifier> to (<symbol>)<quantifier>.
         # [TODO] We'll remove standard syntax gradually.
         # [TODO] Needs a test.
-        if current_character in "*+?" and symbol_def_str[i - 1] != ")":
+        elif (
+            current_character in "*+?"
+            and symbol_def_str[i - 1] != ")"
+            and not (in_regex or in_quote)
+        ):
             symbol = "".join(current) if current else result.pop()
             result.extend(
                 [
