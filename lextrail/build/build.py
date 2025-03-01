@@ -1,4 +1,4 @@
-from typing import Deque
+from typing import Any, Deque
 
 from lextrail.base import OrderedSet, Symbol, SymbolGraph, SymbolGraphType, SymbolType
 from lextrail.build.passes import (
@@ -16,32 +16,36 @@ from lextrail.helpers import (
 
 
 def construct_symbol_subgraph(
-    symbols_str: list[str], graph_type: SymbolGraphType = SymbolGraphType.STANDARD
+    graph_symbols: list[str],
+    graph_type: SymbolGraphType = SymbolGraphType.STANDARD,
+    graph_metadata: dict[str, Any] = {},
 ) -> SymbolGraph:
     symbol_graph = SymbolGraph()
 
     # Empty symbol graph.
-    if len(symbols_str) == 0:
+    if len(graph_symbols) == 0:
         return symbol_graph
 
     # INITIALS
-    initial = _build_symbol_from_string(symbols_str[0])
+    initial = _build_symbol_from_string(graph_symbols[0])
     # Add the node to the initials.
     symbol_graph.initials.add(initial)
     # Add the node to the symbol graph.
     symbol_graph.tree[initial]
 
     # Single node.
-    if len(symbols_str) == 1:
+    if len(graph_symbols) == 1:
         symbol_graph.initials, symbol_graph.finals = OrderedSet([initial]), OrderedSet(
             [initial]
         )
         # Node without connections.
         symbol_graph.tree[initial]
+        # Leak metadata to symbols.
+        symbol_graph.leak(graph_metadata)
         return symbol_graph
 
     symbol_previous = initial
-    for symbol_str in symbols_str[1:]:
+    for symbol_str in graph_symbols[1:]:
         if symbol_str == "|":
             symbol_graph.finals.add(symbol_previous)
             continue
@@ -63,6 +67,9 @@ def construct_symbol_subgraph(
     # FINALS
     # Add the node to the finals.
     symbol_graph.finals.add(symbol_previous)
+
+    # Leak metadata to symbols.
+    symbol_graph.leak(graph_metadata)
 
     return cast_symbol_graph(symbol_graph, graph_type)
 
@@ -349,7 +356,7 @@ def cast_symbol_graph(
         return symbol_graph_copy
 
 
-def build_symbol_graph(symbol_def: str) -> SymbolGraph:
+def build_symbol_graph(symbol_def: str, _GLOBAL_COUNT=0) -> SymbolGraph:
     queue_symbol_def = _convert_str_def_to_str_queue(symbol_def)
 
     # We build graphs from the left, (_1 `def_1` (_2 `def_2` 2_) `def_3` (_3 def_4 3_) 1_),
@@ -367,15 +374,24 @@ def build_symbol_graph(symbol_def: str) -> SymbolGraph:
     # We repeat the same process within a single stack, we successively build bottom and upper layers,
     # ``def_1` (_2 `def_2` 2_)` and ``def_3` (_3 def_4 3_)` while acummulating the result
     # in `symbol_graph_partial_lhs_{1}` .
-    def recurse_build(queue_symbol_def: Deque[str]):
+    def recurse_build(
+        queue_symbol_def: Deque[str],
+        queue_symbol_level: int = 0,
+        queue_symbol_count: int = 0,
+    ):
         current_stack_accumulated_symbols: list[str] = []
         current_stack_accumulated_symbol_graph: SymbolGraph = SymbolGraph()
+        nonlocal _GLOBAL_COUNT
         while True:
             str_symbol = queue_symbol_def.popleft()
 
             if str_symbol in ("(", "[", "<", "{"):
                 symbol_graph_bottom_level = construct_symbol_subgraph(
-                    current_stack_accumulated_symbols
+                    graph_symbols=current_stack_accumulated_symbols,
+                    graph_metadata={
+                        "_DEPTH": queue_symbol_level,
+                        "_ORDER": queue_symbol_count,
+                    },
                 )
 
                 # What happens if `current_stack_accumulated_symbols` is not cleared?
@@ -386,7 +402,14 @@ def build_symbol_graph(symbol_def: str) -> SymbolGraph:
                 # Then while consuming the symbols `def_3`, we'll have additional symbols from `def_1`.
                 current_stack_accumulated_symbols.clear()
 
-                symbol_graph_upper_level = recurse_build(queue_symbol_def)
+                # Track count for subgraphs, useful to implement backreferences.
+                _GLOBAL_COUNT += 1
+
+                symbol_graph_upper_level = recurse_build(
+                    queue_symbol_def,
+                    queue_symbol_level + 1,
+                    _GLOBAL_COUNT,
+                )
 
                 # Accumulates successive bottom-upper stack level symbol graph builds.
                 if current_stack_accumulated_symbol_graph:
@@ -428,10 +451,20 @@ def build_symbol_graph(symbol_def: str) -> SymbolGraph:
                     index = current_stack_accumulated_symbols.index("|")
                     symbol_graph_or_lhs, symbol_graph_or_rhs = (
                         construct_symbol_subgraph(
-                            current_stack_accumulated_symbols[:index]
+                            graph_symbols=current_stack_accumulated_symbols[:index],
+                            graph_metadata={
+                                "_DEPTH": queue_symbol_level,
+                                "_ORDER": queue_symbol_count,
+                            },
                         ),
                         construct_symbol_subgraph(
-                            current_stack_accumulated_symbols[index + 1 :]
+                            graph_symbols=current_stack_accumulated_symbols[
+                                index + 1 :
+                            ],
+                            graph_metadata={
+                                "_DEPTH": queue_symbol_level,
+                                "_ORDER": queue_symbol_count,
+                            },
                         ),
                     )
                     # Accumulate the left symbol graph with left portion before the '|' symbol.
@@ -445,7 +478,11 @@ def build_symbol_graph(symbol_def: str) -> SymbolGraph:
                     return cast_symbol_graph(symbol_graph_out, SYMBOL_GRAPH_TYPE)  # type: ignore
 
                 current_stack_to_accumulate_symbol_graph = construct_symbol_subgraph(
-                    current_stack_accumulated_symbols
+                    graph_symbols=current_stack_accumulated_symbols,
+                    graph_metadata={
+                        "_DEPTH": queue_symbol_level,
+                        "_ORDER": queue_symbol_count,
+                    },
                 )
                 symbol_graph_out = connect_symbol_graph(
                     current_stack_accumulated_symbol_graph,
@@ -463,7 +500,11 @@ def build_symbol_graph(symbol_def: str) -> SymbolGraph:
                 # Handles the case where there exist an opening `("(", "[", "{")` delimiter next to '|.
                 # Creates subgraph of accumulated symbols, if they exist; else return an empty graph.
                 current_stack_to_accumulate_symbol_graph = construct_symbol_subgraph(
-                    current_stack_accumulated_symbols
+                    graph_symbols=current_stack_accumulated_symbols,
+                    graph_metadata={
+                        "_DEPTH": queue_symbol_level,
+                        "_ORDER": queue_symbol_count,
+                    },
                 )
 
                 # Consumes `current_stack_accumulated_symbols.`
@@ -482,7 +523,9 @@ def build_symbol_graph(symbol_def: str) -> SymbolGraph:
                     queue_symbol_def.popleft()
 
                 from_upper_stack_to_accumulate_symbol_graph = recurse_build(
-                    queue_symbol_def
+                    queue_symbol_def,
+                    queue_symbol_level + 1,
+                    queue_symbol_count,
                 )
 
                 current_stack_accumulated_symbol_graph = union_symbol_graph(

@@ -40,6 +40,9 @@ def _build_symbol_from_string(symbol_str: str) -> Symbol:
     elif symbol_str in "()[]{}<>|*?+":
         node = Symbol(symbol_str, SymbolType.SPECIAL)
 
+    elif symbol_str.startswith("\\") and symbol_str[1:].isdigit():
+        node = Symbol(symbol_str, SymbolType.REFERENCE)
+
     else:
         node = Symbol(symbol_str, SymbolType.NON_TERMINAL)
 
@@ -63,14 +66,18 @@ def _is_valid_symbol_syntax(symbol_str: str) -> bool:
     def _is_regex(symbol_str: str):
         return symbol_str.startswith("/") and symbol_str.endswith("/")
 
-    def _is_special_symbol(symbol_str: str):
+    def _is_special(symbol_str: str):
         return symbol_str in "()[]{}/<>|*+?" and len(symbol_str) == 1
+
+    def _is_reference(symbol_str: str):
+        return symbol_str.startswith("\\") and symbol_str[1:].isdigit()
 
     return (
         _is_terminal(symbol_str)
         or _is_non_terminal(symbol_str)
         or _is_regex(symbol_str)
-        or _is_special_symbol(symbol_str)
+        or _is_special(symbol_str)
+        or _is_reference(symbol_str)
     )
 
 

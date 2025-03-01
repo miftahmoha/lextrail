@@ -3,7 +3,7 @@ from collections import defaultdict
 from copy import deepcopy
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Deque, Generic, Iterable, Iterator, Optional, TypeVar
+from typing import Any, Deque, Generic, Iterable, Iterator, Optional, TypeVar
 
 T = TypeVar("T")
 
@@ -59,9 +59,10 @@ class Symbol:
     content: str
     s_type: "SymbolType"
     s_id: uuid.UUID = field(default_factory=lambda: uuid.uuid4())
+    s_metadata: dict[str, Any] = field(default_factory=dict)
 
     def __hash__(self):
-        return hash((self.content, self.s_type, self.s_id))
+        return hash(self.s_id)
 
     def __eq__(self, other):
         # Ensure equality is checked for all fields.
@@ -80,6 +81,7 @@ class SymbolType(Enum):
     NON_TERMINAL = 2
     REGEX = 3
     SPECIAL = 4
+    REFERENCE = 5
 
 
 @dataclass
@@ -101,6 +103,13 @@ class SymbolGraph:
 
     def __bool__(self) -> bool:
         return bool(self.initials) and bool(self.tree) and bool(self.finals)
+
+    def leak(self, metadata: dict[str, Any]):
+        for symbol in self.initials:
+            symbol.s_metadata = metadata
+        for successors in self.tree.values():
+            for symbol in successors:
+                symbol.s_metadata = metadata
 
     def copy(self):
         return deepcopy(self)
