@@ -52,45 +52,56 @@ def clear_dict_before_call(dict_name: str):
 class Guide:
     built_symbol_graph: SymbolGraph
     next_terminals_w_history: dict[Symbol, CFGStatefulGraph]
+    backreferences: dict[int, str]
 
     def __init__(self, definition: str):
         self.built_symbol_graph = build_symbol_graph(definition)
         self.next_terminals_w_history = {}
-        # Backreference states.
-        self.backreferences: dict[int, str] = defaultdict(str)
-        self.indices: list[int] = []
-        self.depth, self.count = 0, 0
+        self.backreferences = defaultdict(str)
 
     def backreference(self, chosen_symbols: list[Symbol]):
+        def extract_indices(start_key, dictionary):
+            result = [start_key]
+            current_key = start_key
+
+            # Start with value one less than initial.
+            current_value = dictionary[start_key] - 1
+
+            while current_value >= 1:
+                # Find largest key less than current_key with current_value.
+                next_key = max(
+                    (
+                        k
+                        for k in dictionary.keys()
+                        if k < current_key and dictionary[k] == current_value
+                    ),
+                    default=None,
+                )
+
+                if next_key is None:
+                    break
+
+                result.append(next_key)
+                current_key = next_key
+                # Decrease the value we're looking for.
+                current_value -= 1
+
+            return result
+
         # Content of the symbols must be the same.
         if not all(x == chosen_symbols[0] for x in chosen_symbols):
             raise ParsingError("Ambiguous symbols must have same content.")
 
         chosen_symbol = chosen_symbols[0]
 
-        depth, count = (
-            chosen_symbol.s_metadata["_DEPTH"],
-            chosen_symbol.s_metadata["_ORDER"],
+        count = chosen_symbol.s_metadata["_DEPTH"]
+
+        indices = extract_indices(
+            count, self.built_symbol_graph.metadata["_COUNT_TO_DEPTH"]
         )
-        if False:
-            ...
-        elif depth < self.depth:
-            self.indices.pop()
-        elif depth > self.depth:
-            self.indices.append(count)
-        elif count > self.count:
-            self.indices.pop()
-            self.indices.append(count)
-        elif count < self.count:
-            raise ParsingError(
-                f"Count should increase but found {count=} < {self.count=}."
-            )
 
-        for index in self.indices:
+        for index in indices:
             self.backreferences[index] += chosen_symbol.content[1:-1]
-
-        self.depth = depth
-        self.count = count
 
     @clear_dict_before_call("next_terminals_w_history")
     def get_next_terminals(

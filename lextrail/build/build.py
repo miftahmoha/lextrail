@@ -356,7 +356,9 @@ def cast_symbol_graph(
         return symbol_graph_copy
 
 
-def build_symbol_graph(symbol_def: str, _GLOBAL_COUNT=0) -> SymbolGraph:
+def build_symbol_graph(
+    symbol_def: str, _GLOBAL_COUNT=0, _GLOBAL_COUNT_TO_DEPTH: dict[int, int] = {}
+) -> SymbolGraph:
     queue_symbol_def = _convert_str_def_to_str_queue(symbol_def)
 
     # We build graphs from the left, (_1 `def_1` (_2 `def_2` 2_) `def_3` (_3 def_4 3_) 1_),
@@ -382,6 +384,7 @@ def build_symbol_graph(symbol_def: str, _GLOBAL_COUNT=0) -> SymbolGraph:
         current_stack_accumulated_symbols: list[str] = []
         current_stack_accumulated_symbol_graph: SymbolGraph = SymbolGraph()
         nonlocal _GLOBAL_COUNT
+        nonlocal _GLOBAL_COUNT_TO_DEPTH
         while True:
             str_symbol = queue_symbol_def.popleft()
 
@@ -402,8 +405,11 @@ def build_symbol_graph(symbol_def: str, _GLOBAL_COUNT=0) -> SymbolGraph:
                 # Then while consuming the symbols `def_3`, we'll have additional symbols from `def_1`.
                 current_stack_accumulated_symbols.clear()
 
-                # Track count for subgraphs, useful to implement backreferences.
+                # Track count for subgraphs.
                 _GLOBAL_COUNT += 1
+
+                # Track a mapping from counts to depths for subgraphs.
+                _GLOBAL_COUNT_TO_DEPTH[_GLOBAL_COUNT] = queue_symbol_level + 1
 
                 symbol_graph_upper_level = recurse_build(
                     queue_symbol_def,
@@ -522,10 +528,16 @@ def build_symbol_graph(symbol_def: str, _GLOBAL_COUNT=0) -> SymbolGraph:
                 if queue_symbol_def[0] in ["(", "[", "{", "<"]:
                     queue_symbol_def.popleft()
 
+                # Track count for subgraphs.
+                _GLOBAL_COUNT += 1
+
+                # Track a mapping from counts to depths for subgraphs.
+                _GLOBAL_COUNT_TO_DEPTH[_GLOBAL_COUNT] = queue_symbol_level + 1
+
                 from_upper_stack_to_accumulate_symbol_graph = recurse_build(
                     queue_symbol_def,
                     queue_symbol_level + 1,
-                    queue_symbol_count,
+                    _GLOBAL_COUNT,
                 )
 
                 current_stack_accumulated_symbol_graph = union_symbol_graph(
@@ -540,4 +552,9 @@ def build_symbol_graph(symbol_def: str, _GLOBAL_COUNT=0) -> SymbolGraph:
 
             current_stack_accumulated_symbols.append(str_symbol)
 
-    return recurse_build(queue_symbol_def)
+    symbol_graph = recurse_build(queue_symbol_def)
+
+    # Set global metadata.
+    symbol_graph.metadata["_COUNT_TO_DEPTH"] = _GLOBAL_COUNT_TO_DEPTH
+
+    return symbol_graph
