@@ -202,45 +202,73 @@ class Guide:
 class CFGGuide:
     built_cfg_grammar: dict[str, SymbolGraph]
     next_terminals_w_history: dict[Symbol, Deque[CFGStatefulGraph]]
+    backreferences: dict[str, dict[int, str]]
 
     def __init__(self, cfg_grammar: str):
         self.built_cfg_grammar = build_cfg_grammar_into_symbol_graphs(cfg_grammar)
         self.next_terminals_w_history = {}
-        # Backreference states.
-        self.backreferences: dict[int, str] = defaultdict(str)
-        self.indices: list[int] = []
-        self.depth, self.count = 0, 0
+        self.backreferences = defaultdict(lambda: defaultdict(str))
 
-    def backreference(self, chosen_symbols: list[Symbol]):
-        # Content of the symbols must be the same.
-        if not all(x == chosen_symbols[0] for x in chosen_symbols):
-            raise ParsingError("Ambiguous symbols must have same content.")
+    def backreference(self, chosen_symbols: list[Symbol], chosen_states: list[CFGGenerationState]):
+        def extract_indices(start_key, dictionary):
+            result = [start_key]
+            current_key = start_key
 
-        chosen_symbol = chosen_symbols[0]
+            # Start with value one less than initial.
+            current_value = dictionary[start_key] - 1
 
-        depth, count = (
-            chosen_symbol.s_metadata["_DEPTH"],
-            chosen_symbol.s_metadata["_ORDER"],
+            while current_value >= 1:
+                # Find largest key less than current_key with current_value.
+                next_key = max(
+                    (
+                        k
+                        for k in dictionary.keys()
+                        if k < current_key and dictionary[k] == current_value
+                    ),
+                    default=None,
+                )
+
+                if next_key is None:
+                    break
+
+                result.append(next_key)
+                current_key = next_key
+                # Decrease the value we're looking for.
+                current_value -= 1
+
+            return result
+
+        # Content and state of the symbols must be the same.
+        if not all(x == chosen_symbols[0] for x in chosen_symbols) or not all(x == chosen_states[0] for x in chosen_states):
+            raise ParsingError("Ambiguous symbols must have identical content and state.")
+
+        chosen_symbol, chosen_state = chosen_symbols[0], chosen_states[0]
+
+        label = chosen_state[-1].label 
+ 
+        count = chosen_symbol.s_metadata["_DEPTH"]
+
+        indices = extract_indices(
+            count, self.built_cfg_grammar[label].metadata["_COUNT_TO_DEPTH"]
         )
-        if False:
-            ...
-        elif depth < self.depth:
-            self.indices.pop()
-        elif depth > self.depth:
-            self.indices.append(count)
-        elif count > self.count:
-            self.indices.pop()
-            self.indices.append(count)
-        elif count < self.count:
-            raise ParsingError(
-                f"Count should increase but found {count=} < {self.count=}."
+
+        for index in indices:
+            self.backreferences[label][index] += chosen_symbol.content[1:-1]
+
+        # Propagating backreferences into lower layers.
+        for layer in list(chosen_state)[:-1]:
+            state_symbol, state_label = layer.state, layer.label
+
+            assert layer.state is not None, "None state was found while backreferencing."
+
+            count = state_symbol.s_metadata["_DEPTH"] # type: ignore
+
+            indices = extract_indices(
+                count, self.built_cfg_grammar[state_label].metadata["_COUNT_TO_DEPTH"]
             )
-
-        for index in self.indices:
-            self.backreferences[index] += chosen_symbol.content[1:-1]
-
-        self.depth = depth
-        self.count = count
+            
+            for index in indices:
+                self.backreferences[state_label][index] += chosen_symbol.content[1:-1]
 
     @clear_dict_before_call("next_terminals_w_history")
     def get_next_terminals(
@@ -268,31 +296,13 @@ class CFGGuide:
                     "`CFGGenerationState` is empty while `chosen_symbols` is not."
                 )
 
-        # If a backreference symbol is given, it must not be passed to the LLM but rather repassed to `CFGGuide`.
-        if (chosen_symbol := chosen_symbols[0]).s_type == SymbolType.REFERENCE and len(
-            chosen_symbols
-        ) == 1:
-            if len(chosen_symbols) == 1:
-                # Retrieve index.
-                index = int(chosen_symbol.content[1:])
-                # Modify the REFERENCE symbol into a TERMINAL symbol with the corresponding content.
-                chosen_symbol.s_type, chosen_symbol.content = (
-                    SymbolType.TERMINAL,
-                    self.backreferences[index - 1],
-                )
-                return {chosen_symbol: chosen_states[0]}
-            else:
-                raise ParsingError(
-                    "If a backreference is a successor, then it must be unique."
-                )
-
-        # Backreference update.
-        self.backreference(chosen_symbols)
-
         # Poping the last graphs.
         last_visit_graphs = [chosen_state[-1].graph for chosen_state in chosen_states]
 
         if chosen_symbols:
+            # Backreference update.
+            # Ambiguous symbols must have same content and (same)? label.
+            self.backreference(chosen_symbols, chosen_states)
             # Update the state for `CFGStatefulGraph` to the terminal(s) symbol(s) chosen by the LLM.
             for chosen_state, chosen_symbol in zip(chosen_states, chosen_symbols):
                 chosen_state[-1].state = chosen_symbol
@@ -376,11 +386,14 @@ class CFGGuide:
                     # Retrieve index.
                     index = int(next_symbol.content[1:])
                     # Check if index is valid.
-                    if index not in self.backreferences.keys():
+                    if (
+                        index
+                        not in self.backreferences[chosen_states[0][-1].label].keys()
+                    ):
                         raise ParsingError(f"Invalid backreference <\\{index}>.")
                     # Modify the REFERENCE symbol into a TERMINAL symbol with the corresponding content.
                     next_symbol.s_type, next_symbol.content = (
                         SymbolType.TERMINAL,
-                        f'"{self.backreferences[index-1]}"',
+                        f'"{self.backreferences[chosen_states[0][-1].label][index-1]}"',
                     )
                     self.next_terminals_w_history[next_symbol] = chosen_state
