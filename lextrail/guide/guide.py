@@ -94,7 +94,11 @@ class Guide:
 
         chosen_symbol = chosen_symbols[0]
 
-        count = chosen_symbol.s_metadata["_DEPTH"]
+        # END_DEF can be given as choice symbol.
+        if _is_end_def_symbol(chosen_symbol):
+            return
+        
+        count = chosen_symbol.s_metadata["_ORDER"]
 
         indices = extract_indices(
             count, self.built_symbol_graph.metadata["_COUNT_TO_DEPTH"]
@@ -194,7 +198,7 @@ class Guide:
                     # Modify the REFERENCE symbol into a TERMINAL symbol with the corresponding content.
                     next_symbol.s_type, next_symbol.content = (
                         SymbolType.TERMINAL,
-                        f'"{self.backreferences[index-1]}"',
+                        f'"{self.backreferences[index+1]}"',
                     )
                     self.next_terminals_w_history[next_symbol] = chosen_state
 
@@ -244,9 +248,13 @@ class CFGGuide:
 
         chosen_symbol, chosen_state = chosen_symbols[0], chosen_states[0]
 
+        # END_DEF can be given as choice symbol.
+        if _is_end_def_symbol(chosen_symbol):
+            return
+
         label = chosen_state[-1].label 
  
-        count = chosen_symbol.s_metadata["_DEPTH"]
+        count = chosen_symbol.s_metadata["_ORDER"]
 
         indices = extract_indices(
             count, self.built_cfg_grammar[label].metadata["_COUNT_TO_DEPTH"]
@@ -261,7 +269,7 @@ class CFGGuide:
 
             assert layer.state is not None, "None state was found while backreferencing."
 
-            count = state_symbol.s_metadata["_DEPTH"] # type: ignore
+            count = state_symbol.s_metadata["_ORDER"] # type: ignore
 
             indices = extract_indices(
                 count, self.built_cfg_grammar[state_label].metadata["_COUNT_TO_DEPTH"]
@@ -394,6 +402,6 @@ class CFGGuide:
                     # Modify the REFERENCE symbol into a TERMINAL symbol with the corresponding content.
                     next_symbol.s_type, next_symbol.content = (
                         SymbolType.TERMINAL,
-                        f'"{self.backreferences[chosen_states[0][-1].label][index-1]}"',
+                        f'"{self.backreferences[chosen_states[0][-1].label][index+1]}"',
                     )
                     self.next_terminals_w_history[next_symbol] = chosen_state

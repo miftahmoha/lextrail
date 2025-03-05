@@ -29,13 +29,10 @@ def _build_symbol_from_string(symbol_str: str) -> Symbol:
         node = Symbol(symbol_str, SymbolType.TERMINAL)
 
     elif symbol_str.startswith("/") and symbol_str.endswith("/"):
-        # Index to strip `symbol` from `regex()`.
-        start = symbol_str.find("/")
-
         # Check if regex is valid, throw an exception otherwise.
-        _check_if_valid_regex(symbol_str[start + 1 : -1])
+        _check_if_valid_regex(symbol_str[1:-1])
 
-        node = Symbol(symbol_str[start + 1 : -1], SymbolType.REGEX)
+        node = Symbol(symbol_str[1:-1], SymbolType.REGEX)
 
     elif symbol_str in "()[]{}<>|*?+":
         node = Symbol(symbol_str, SymbolType.SPECIAL)
