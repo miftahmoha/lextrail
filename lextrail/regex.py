@@ -237,7 +237,23 @@ def _regex_split_pass(regex_str: str) -> list[str]:
 
         # [NOT SUPPORTED] Send exception for backreferences.
         elif current_character.isdigit() and _is_escaped(regex_str, i - 1):
-            raise InvalidRegex("Backreferences are not supported yet.")
+            result.append("".join(current))
+            current.clear()
+            # Collecting the digit sequence.
+            j = 1
+            current.append(regex_str[i - 1] + current_character)
+            while (
+                i + j < len(regex_str)
+                and (next_character := regex_str[i + j]).isdigit()
+            ):
+                current.append(next_character)
+                j += 1
+            # Add to result and reinitialize.
+            result.append("".join(current))
+            current.clear()
+            i += j
+            continue
+            # raise InvalidRegex("Backreferences are not supported yet.")
 
         # [NOT SUPPORTED] Send exception for unicode characters.
         elif current_character == "u" and _is_escaped(regex_str, i - 1):
@@ -284,16 +300,26 @@ def _regex_split_pass(regex_str: str) -> list[str]:
                             )
                             current.clear()
                         # [NOTE] We can separate special characters into two categories,
-                        # (1) are escaped and single which are "()[]{}|.-", those are
+                        # (1) are escaped and single which are "()[]{}|.", those are
                         # "contextually" escaped but also are "single" (they're not grouped with other
                         # characters). (2) are "contextually" escaped, but can be grouped with other characters
                         # which are "-/". (1) are found in result while (2) are found in current.
                         # If the last character is a (1), but
                         # without `()[]{}` (dealt with above) as well as `|` (leads to an error if precedented with
-                        # `*+?`), only `.` remains then.
+                        # `*+?`), only `.` and the character classes `\dDwWsS` remain then.
                         # `.` will be replaced by [..], wrapping with `(..)` is useless.
+                        # Same with character classes, they are and they SHOULD always be WRAPPED.
                         else:
-                            assert result[-1] in ".", "Only `.` character is allowed."
+                            assert result[-1] in [
+                                ".",
+                                "\\d",
+                                "\\D",
+                                "\\w",
+                                "\\W",
+                                "\\s",
+                                "\\S",
+                            ], "Only `.` and character classes \\dDwWsS are allowed."
+                            result.append(current_character)
                 else:
                     current.append(current_character)
 
@@ -371,7 +397,6 @@ def _regex_split_pass(regex_str: str) -> list[str]:
 
     if current:
         result.append("".join(current))
-
     return result
 
 
@@ -440,7 +465,7 @@ def _regex_expand_pass(regex_chunks: list[str]):
 
             # Matches any whitespace character (spaces, tabs, newlines).
             elif current_chunk[1] == "s":
-                expanded = expanded + [" ", "|", "\t", "|", "\n"]
+                expanded = expanded + ["(", " ", "|", "\t", "|", "\n", ")"]
 
             # Matches any non-whitespace character.
             elif current_chunk[1] == "S":
@@ -634,7 +659,6 @@ def _regex_normalize_pass(regex_chunks: list[str]):
         else:
             result.append(current_chunk)
         i += 1
-
     return result
 
 
@@ -712,11 +736,14 @@ def _regex_terminalize_pass(regex_chunks: list[str], _IS_TEST_VERSION: bool = Fa
             else:
                 result.extend(_split_pipe(current_chunk))
 
+        # Backreferences.
+        elif current_chunk[0] == "\\" and current_chunk[1:].isdigit():
+            result.append(current_chunk)
+
         else:
             result.append('"' + _discard_escapes(current_chunk) + '"')
 
         i += 1
-
     return result
 
 

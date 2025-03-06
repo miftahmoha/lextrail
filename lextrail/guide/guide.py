@@ -97,7 +97,7 @@ class Guide:
         # END_DEF can be given as choice symbol.
         if _is_end_def_symbol(chosen_symbol):
             return
-        
+
         count = chosen_symbol.s_metadata["_ORDER"]
 
         indices = extract_indices(
@@ -213,7 +213,9 @@ class CFGGuide:
         self.next_terminals_w_history = {}
         self.backreferences = defaultdict(lambda: defaultdict(str))
 
-    def backreference(self, chosen_symbols: list[Symbol], chosen_states: list[CFGGenerationState]):
+    def backreference(
+        self, chosen_symbols: list[Symbol], chosen_states: list[CFGGenerationState]
+    ):
         def extract_indices(start_key, dictionary):
             result = [start_key]
             current_key = start_key
@@ -243,8 +245,12 @@ class CFGGuide:
             return result
 
         # Content and state of the symbols must be the same.
-        if not all(x == chosen_symbols[0] for x in chosen_symbols) or not all(x == chosen_states[0] for x in chosen_states):
-            raise ParsingError("Ambiguous symbols must have identical content and state.")
+        if not all(x == chosen_symbols[0] for x in chosen_symbols) or not all(
+            x == chosen_states[0] for x in chosen_states
+        ):
+            raise ParsingError(
+                "Ambiguous symbols must have identical content and state."
+            )
 
         chosen_symbol, chosen_state = chosen_symbols[0], chosen_states[0]
 
@@ -252,8 +258,8 @@ class CFGGuide:
         if _is_end_def_symbol(chosen_symbol):
             return
 
-        label = chosen_state[-1].label 
- 
+        label = chosen_state[-1].label
+
         count = chosen_symbol.s_metadata["_ORDER"]
 
         indices = extract_indices(
@@ -267,14 +273,16 @@ class CFGGuide:
         for layer in list(chosen_state)[:-1]:
             state_symbol, state_label = layer.state, layer.label
 
-            assert layer.state is not None, "None state was found while backreferencing."
+            assert (
+                layer.state is not None
+            ), "None state was found while backreferencing."
 
-            count = state_symbol.s_metadata["_ORDER"] # type: ignore
+            count = state_symbol.s_metadata["_ORDER"]  # type: ignore
 
             indices = extract_indices(
                 count, self.built_cfg_grammar[state_label].metadata["_COUNT_TO_DEPTH"]
             )
-            
+
             for index in indices:
                 self.backreferences[state_label][index] += chosen_symbol.content[1:-1]
 

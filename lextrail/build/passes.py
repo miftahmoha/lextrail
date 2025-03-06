@@ -210,7 +210,6 @@ def _split_symbols(symbol_def_str: str) -> list[str]:
             continue
 
         # Converting <symbol><quantifier> to (<symbol>)<quantifier>.
-        # [TODO] We'll remove standard syntax gradually.
         # [TODO] Needs a test.
         elif (
             current_character in "*+?"
@@ -306,6 +305,48 @@ def _parse_regex(symbols: list[str]):
     return result
 
 
+def _adjust_regex_backreferences(symbols: list[str]):
+    backref_details: list[tuple[int, int, int, int]] = []
+    bracket_count = 0
+
+    for i, item in enumerate(symbols):
+        # Count opening brackets before finding regex patterns.
+        if item in ["(", "[", "{", "<"]:
+            bracket_count += 1
+            continue
+
+        if item.startswith("/") and item.endswith("/"):
+            # Remove the enclosing slashes to get the regex pattern.
+            pattern = item[1:-1]
+
+            # Find positions of backreferences.
+            j = 0
+            while j < len(pattern):
+                # Look for a backslash.
+                if pattern[j] == "\\":
+                    # If it's not escaped (not preceeded by another backslash).
+                    if not _is_escaped(pattern, j - 1):
+                        # Check if next char is a digit.
+                        start_pos = j
+                        j += 1
+                        # Collect all consecutive digits to get the full backreference.
+                        while j < len(pattern) and pattern[j].isdigit():
+                            j += 1
+                        # Only add if we found at least one digit. Probably useless CF.
+                        if j > start_pos + 1:
+                            backref_details.append((i, start_pos + 1, j, bracket_count))
+                            continue
+                j += 1
+
+    for order, start, end, offset in backref_details:
+        current_symbol = symbols[order]
+        # Add the offset since backreference are applied not only to REGEX, but the whole expression containing both TERMINAL and REGEX symbols.
+        reference = int(current_symbol[start + 1 : end + 1]) + offset
+        symbols[order] = (
+            current_symbol[: start + 1] + f"{reference+1}" + symbols[order][end + 1 :]
+        )
+
+
 def _split_terminals_into_chars(symbols: list[str]) -> list[str]:
     result: list[str] = []
     i = 0
@@ -324,77 +365,20 @@ def _split_terminals_into_chars(symbols: list[str]) -> list[str]:
     return result
 
 
-def _clear_ambiguity(symbols: list[str]) -> None:
-    _AMBIGUOUS_SYMBOLS = ">}"
-    _DELIMITERS_OPEN, _DELIMITERS_CLOSE = "([{<", ")]}>"
-
-    assembled: list[str] = []
-    is_initial = True
-    is_delimited = False
-    i = 0
-    index = 0
-
-    def _extract_content(symbols: list[str], i: int) -> list[str]:
-        assembled: list[str] = []
-        stack_idx: int = 0
-
-        for idx in reversed(range(i + 1)):
-            current_symbol = symbols[idx]
-
-            # Get the content of outer delimiters.
-            if current_symbol in _DELIMITERS_OPEN:
-                if stack_idx != 0:
-                    stack_idx -= 1
-
-                    if stack_idx == 0:
-                        assembled.insert(0, current_symbol)
-                        break
-
-            if current_symbol in _DELIMITERS_CLOSE:
-                stack_idx += 1
-
-            assembled.insert(0, current_symbol)
-
-        return assembled
-
-    while i < len(symbols):
-        current_symbol = symbols[i]
-
-        if current_symbol in _AMBIGUOUS_SYMBOLS:
-            assembled = _extract_content(symbols, i)[1:-1]
-            index = i
-
-        else:
-            if assembled:
-                if current_symbol in _DELIMITERS_OPEN and is_initial:
-                    is_delimited, is_initial = not is_delimited, not is_initial
-                else:
-                    popped_symbol = assembled.pop(0)
-                    if current_symbol == popped_symbol:
-                        if not assembled:
-                            end = i + 1
-                            del symbols[
-                                index + 1 : end if not is_delimited else end + 1
-                            ]
-                            i -= end - index - 1
-                    else:
-                        is_delimited, is_initial = not is_delimited, not is_initial
-                        assembled.clear()
-
-        i += 1
-
-
 def _convert_str_def_to_str_queue(symbol_def: str) -> Deque[str]:
     symbols = _split_symbols(symbol_def)
 
-    # Check for errors.
-    _check_for_errors_symbol_def(symbols)
+    # Add the offset since backreference are applied not only to REGEX, but the whole expression containing both TERMINAL and REGEX symbols.
+    _adjust_regex_backreferences(symbols)
 
     if int(getenv("PARSE_REGEX", 1)):
         symbols = _parse_regex(symbols)
 
     if int(getenv("SPLIT_CHARS", 1)):
         symbols = _split_terminals_into_chars(symbols)
+
+    # Check for errors.
+    _check_for_errors_symbol_def(symbols)
 
     # Add initial delimiters.
     symbols = ["("] + symbols + [")"]
