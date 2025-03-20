@@ -14,7 +14,7 @@ def gify_cfg_guide(cfg_grammar: str, _RATIO: int = 4000):
 
     mock_llm = _MockLLM()
 
-    max_num_plots = len(cfg_guide_obj.built_cfg_grammar.keys())
+    max_num_plots = len(cfg_guide_obj._built_cfg_grammar.keys())
 
     frames = []
 

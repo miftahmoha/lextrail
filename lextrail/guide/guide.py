@@ -1,6 +1,6 @@
 from collections import defaultdict, deque
 from copy import deepcopy
-from functools import wraps
+from functools import cached_property, wraps
 from typing import Deque
 
 from lextrail.base import (
@@ -11,6 +11,7 @@ from lextrail.base import (
     SymbolType,
 )
 from lextrail.build.build import build_symbol_graph
+from lextrail.combine import TokenGraph, _update_single_token_combinations
 from lextrail.exceptions import ParsingError
 from lextrail.guide.passes import (
     _check_for_potential_infinite_loops,
@@ -50,14 +51,16 @@ def clear_dict_before_call(dict_name: str):
 
 
 class Guide:
-    built_symbol_graph: SymbolGraph
-    next_terminals_w_history: dict[Symbol, CFGStatefulGraph]
-    backreferences: dict[int, str]
+    _built_symbol_graph: SymbolGraph
+    _next_terminals_w_states: dict[Symbol, CFGStatefulGraph]
+    _token_graphs: list[TokenGraph]
+    _backreferences: dict[int, str]
 
     def __init__(self, definition: str):
-        self.built_symbol_graph = build_symbol_graph(definition)
-        self.next_terminals_w_history = {}
-        self.backreferences = defaultdict(str)
+        self._built_symbol_graph = build_symbol_graph(definition)
+        self._next_terminals_w_states = {}
+        self._token_graphs = []
+        self._backreferences = defaultdict(str)
 
     def backreference(self, chosen_symbols: list[Symbol]):
         def extract_indices(start_key, dictionary):
@@ -101,13 +104,13 @@ class Guide:
         count = chosen_symbol.s_metadata["_ORDER"]
 
         indices = extract_indices(
-            count, self.built_symbol_graph.metadata["_COUNT_TO_DEPTH"]
+            count, self._built_symbol_graph.metadata["_COUNT_TO_DEPTH"]
         )
 
         for index in indices:
-            self.backreferences[index] += chosen_symbol.content[1:-1]
+            self._backreferences[index] += chosen_symbol.content[1:-1]
 
-    @clear_dict_before_call("next_terminals_w_history")
+    @clear_dict_before_call("_next_terminals_w_states")
     def get_next_terminals(
         self,
         chosen_symbols: list[Symbol] = [],
@@ -123,7 +126,7 @@ class Guide:
             if not chosen_symbols:
                 # Turning the symbol graph that'll be added to the stack
                 # into a stateful object `CFGStatefulGraph`.
-                start = CFGStatefulGraph(self.built_symbol_graph, "start")
+                start = CFGStatefulGraph(self._built_symbol_graph, "start")
                 self.get_next_terminals(chosen_states=[start])
                 return
             else:
@@ -185,7 +188,7 @@ class Guide:
                     # Set state to the last visited symbol.
                     next_chosen_state.state = next_symbol
                     # Save the next possible terminal `next_symbol` with its history.
-                    self.next_terminals_w_history[next_symbol] = next_chosen_state
+                    self._next_terminals_w_states[next_symbol] = next_chosen_state
                 elif next_symbol.s_type == SymbolType.REFERENCE:
                     # Backreference successors should be unique.
                     if len(next_symbols) > 1:
@@ -193,25 +196,43 @@ class Guide:
                     # Retrieve index.
                     index = int(next_symbol.content[1:])
                     # Check if index is valid.
-                    if index not in self.backreferences.keys():
+                    if index not in self._backreferences.keys():
                         raise ParsingError(f"Invalid backreference <\\{index}>.")
                     # Modify the REFERENCE symbol into a TERMINAL symbol with the corresponding content.
                     next_symbol.s_type, next_symbol.content = (
                         SymbolType.TERMINAL,
-                        f'"{self.backreferences[index+1]}"',
+                        f'"{self._backreferences[index+1]}"',
                     )
-                    self.next_terminals_w_history[next_symbol] = chosen_state
+                    self._next_terminals_w_states[next_symbol] = chosen_state
+
+    @cached_property
+    def next_terminals_w_states(self):
+        if self._token_graphs:
+            return _update_single_token_combinations(self, self._token_graphs)
+        return self._next_terminals_w_states
+
+    def set_token_graphs(self, token_graphs: list[TokenGraph]):
+        if isinstance(token_graphs, list) and all(
+            isinstance(x, TokenGraph) for x in token_graphs
+        ):
+            self._token_graphs = token_graphs
+        else:
+            raise ParsingError(
+                "Incorrect type, `token_graphs` should be of type `list[TokenGraph]`."
+            )
 
 
 class CFGGuide:
-    built_cfg_grammar: dict[str, SymbolGraph]
-    next_terminals_w_history: dict[Symbol, Deque[CFGStatefulGraph]]
-    backreferences: dict[str, dict[int, str]]
+    _built_cfg_grammar: dict[str, SymbolGraph]
+    _next_terminals_w_states: dict[Symbol, Deque[CFGStatefulGraph]]
+    _token_graphs: list[TokenGraph]
+    _backreferences: dict[str, dict[int, str]]
 
     def __init__(self, cfg_grammar: str):
-        self.built_cfg_grammar = build_cfg_grammar_into_symbol_graphs(cfg_grammar)
-        self.next_terminals_w_history = {}
-        self.backreferences = defaultdict(lambda: defaultdict(str))
+        self._built_cfg_grammar = build_cfg_grammar_into_symbol_graphs(cfg_grammar)
+        self._next_terminals_w_states = {}
+        self._token_graphs = []
+        self._backreferences = defaultdict(lambda: defaultdict(str))
 
     def backreference(
         self, chosen_symbols: list[Symbol], chosen_states: list[CFGGenerationState]
@@ -263,13 +284,13 @@ class CFGGuide:
         count = chosen_symbol.s_metadata["_ORDER"]
 
         indices = extract_indices(
-            count, self.built_cfg_grammar[label].metadata["_COUNT_TO_DEPTH"]
+            count, self._built_cfg_grammar[label].metadata["_COUNT_TO_DEPTH"]
         )
 
         for index in indices:
-            self.backreferences[label][index] += chosen_symbol.content[1:-1]
+            self._backreferences[label][index] += chosen_symbol.content[1:-1]
 
-        # Propagating backreferences into lower layers.
+        # Propagating _backreferences into lower layers.
         for layer in list(chosen_state)[:-1]:
             state_symbol, state_label = layer.state, layer.label
 
@@ -280,13 +301,13 @@ class CFGGuide:
             count = state_symbol.s_metadata["_ORDER"]  # type: ignore
 
             indices = extract_indices(
-                count, self.built_cfg_grammar[state_label].metadata["_COUNT_TO_DEPTH"]
+                count, self._built_cfg_grammar[state_label].metadata["_COUNT_TO_DEPTH"]
             )
 
             for index in indices:
-                self.backreferences[state_label][index] += chosen_symbol.content[1:-1]
+                self._backreferences[state_label][index] += chosen_symbol.content[1:-1]
 
-    @clear_dict_before_call("next_terminals_w_history")
+    @clear_dict_before_call("_next_terminals_w_states")
     def get_next_terminals(
         self,
         chosen_symbols: list[Symbol] = [],
@@ -304,7 +325,7 @@ class CFGGuide:
             if not chosen_symbols:
                 # Turning the symbol graph that'll be added to the stack
                 # into a stateful object `CFGStatefulGraph`.
-                start = CFGStatefulGraph(self.built_cfg_grammar["start"], "start")
+                start = CFGStatefulGraph(self._built_cfg_grammar["start"], "start")
                 self.get_next_terminals(chosen_states=[deque([start])])
                 return
             else:
@@ -374,7 +395,7 @@ class CFGGuide:
                     # Set state to the last visited symbol.
                     next_chosen_state[-1].state = next_symbol
                     # Save the next possible terminal `next_symbol` with its history.
-                    self.next_terminals_w_history[next_symbol] = next_chosen_state
+                    self._next_terminals_w_states[next_symbol] = next_chosen_state
 
                 # Create an additional layer in the stack.
                 if next_symbol.s_type == SymbolType.NON_TERMINAL:
@@ -387,7 +408,7 @@ class CFGGuide:
                     # Turning the symbol graph that'll be added to the stack
                     # into a stateful object `CFGStatefulGraph`.
                     cfg_stateful_graph = CFGStatefulGraph(
-                        graph=self.built_cfg_grammar[next_symbol.content],
+                        graph=self._built_cfg_grammar[next_symbol.content],
                         label=next_symbol.content,
                     )
                     # Adding the stateful graph layer to the stack.
@@ -404,12 +425,28 @@ class CFGGuide:
                     # Check if index is valid.
                     if (
                         index
-                        not in self.backreferences[chosen_states[0][-1].label].keys()
+                        not in self._backreferences[chosen_states[0][-1].label].keys()
                     ):
                         raise ParsingError(f"Invalid backreference <\\{index}>.")
                     # Modify the REFERENCE symbol into a TERMINAL symbol with the corresponding content.
                     next_symbol.s_type, next_symbol.content = (
                         SymbolType.TERMINAL,
-                        f'"{self.backreferences[chosen_states[0][-1].label][index+1]}"',
+                        f'"{self._backreferences[chosen_states[0][-1].label][index+1]}"',
                     )
-                    self.next_terminals_w_history[next_symbol] = chosen_state
+                    self._next_terminals_w_states[next_symbol] = chosen_state
+
+    @cached_property
+    def next_terminals_w_states(self):
+        if self._token_graphs:
+            return _update_single_token_combinations(self, self._token_graphs)
+        return self._next_terminals_w_states
+
+    def set_token_graphs(self, token_graphs: list[TokenGraph]):
+        if isinstance(token_graphs, list) and all(
+            isinstance(x, TokenGraph) for x in token_graphs
+        ):
+            self._token_graphs = token_graphs
+        else:
+            raise ParsingError(
+                "Incorrect type, `token_graphs` should be of type `list[TokenGraph]`."
+            )

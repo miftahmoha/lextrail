@@ -84,7 +84,7 @@ def _get_full_guided_response(mcfg_guide: CFGGuide) -> str:
 
     while True:
         mcfg_guide.get_next_terminals(chosen_symbols, chosen_states)
-        next_terminals_w_hist = mcfg_guide.next_terminals_w_history
+        next_terminals_w_hist = mcfg_guide.next_terminals_w_states
 
         # End generation.
         if not next_terminals_w_hist:
@@ -114,15 +114,15 @@ def _get_partial_guided_response(
     chosen_symbols: list[Symbol],
     chosen_states: list[CFGGenerationState],
     mock_llm: "_MockLLM",
-    ):
+):
     cfg_guide_obj.get_next_terminals(chosen_symbols, chosen_states)
-    next_terminals_w_history = cfg_guide_obj.next_terminals_w_history
+    next_terminals_w_states = cfg_guide_obj.next_terminals_w_states
 
     # End generation.
-    if not next_terminals_w_history:
-        return [], [] 
+    if not next_terminals_w_states:
+        return [], []
 
-    next_terminal_symbols = list(next_terminals_w_history.keys())
+    next_terminal_symbols = list(next_terminals_w_states.keys())
     regex = _map_next_terminal_symbols_to_regex(next_terminal_symbols)
 
     # Get the chosen symbol as a string from the LLM.
@@ -135,7 +135,7 @@ def _get_partial_guided_response(
     )
 
     chosen_states = [
-        next_terminals_w_history[chosen_symbol] for chosen_symbol in chosen_symbols
+        next_terminals_w_states[chosen_symbol] for chosen_symbol in chosen_symbols
     ]
 
     return chosen_symbols, chosen_states
@@ -146,7 +146,7 @@ def simulate_cfg_guide(cfg_grammar: str, _RATIO: int = 4000):
 
     mock_llm = _MockLLM()
 
-    max_num_plots = len(cfg_guide_obj.built_cfg_grammar.keys())
+    max_num_plots = len(cfg_guide_obj._built_cfg_grammar.keys())
 
     figure, axes = plt.subplots(
         max_num_plots // 2 + 1, max_num_plots // 2 + 1, figsize=(18, 10)
