@@ -17,13 +17,13 @@ def test_def_without_or_without_nesting_standard(
     while True:
         Guide_.get_next_terminals(chosen_symbols, chosen_states)
         chosen_symbols, chosen_states = list(
-            Guide_.next_terminals_w_history.keys()
-        ), list(Guide_.next_terminals_w_history.values())
+            Guide_._next_terminals_w_states.keys()
+        ), list(Guide_._next_terminals_w_states.values())
 
-        if not Guide_.next_terminals_w_history:
+        if not Guide_._next_terminals_w_states:
             break
 
-    assert Guide_.backreferences == {1: "1234567", 2: "23", 3: "56"}
+    assert Guide_._backreferences == {1: "1234567", 2: "23", 3: "56"}
 
 
 @pytest.fixture
@@ -40,13 +40,13 @@ def test_def_without_or_without_nesting_successive_standard(
     while True:
         Guide_.get_next_terminals(chosen_symbols, chosen_states)
         chosen_symbols, chosen_states = list(
-            Guide_.next_terminals_w_history.keys()
-        ), list(Guide_.next_terminals_w_history.values())
+            Guide_._next_terminals_w_states.keys()
+        ), list(Guide_._next_terminals_w_states.values())
 
-        if not Guide_.next_terminals_w_history:
+        if not Guide_._next_terminals_w_states:
             break
 
-    assert Guide_.backreferences == {1: "1234567", 2: "234", 3: "56"}
+    assert Guide_._backreferences == {1: "1234567", 2: "234", 3: "56"}
 
 
 @pytest.fixture
@@ -61,13 +61,13 @@ def test_def_without_or_with_nesting_standard(def_without_or_with_nesting_standa
     while True:
         Guide_.get_next_terminals(chosen_symbols, chosen_states)
         chosen_symbols, chosen_states = list(
-            Guide_.next_terminals_w_history.keys()
-        ), list(Guide_.next_terminals_w_history.values())
+            Guide_._next_terminals_w_states.keys()
+        ), list(Guide_._next_terminals_w_states.values())
 
-        if not Guide_.next_terminals_w_history:
+        if not Guide_._next_terminals_w_states:
             break
 
-    assert Guide_.backreferences == {1: "12345678910", 2: "2345678", 3: "34", 4: "67"}
+    assert Guide_._backreferences == {1: "12345678910", 2: "2345678", 3: "34", 4: "67"}
 
 
 @pytest.fixture
@@ -84,13 +84,13 @@ def test_def_without_or_with_nesting_successive_standard(
     while True:
         Guide_.get_next_terminals(chosen_symbols, chosen_states)
         chosen_symbols, chosen_states = list(
-            Guide_.next_terminals_w_history.keys()
-        ), list(Guide_.next_terminals_w_history.values())
+            Guide_._next_terminals_w_states.keys()
+        ), list(Guide_._next_terminals_w_states.values())
 
-        if not Guide_.next_terminals_w_history:
+        if not Guide_._next_terminals_w_states:
             break
 
-    assert Guide_.backreferences == {1: "12345678910", 2: "2345678", 3: "345", 4: "67"}
+    assert Guide_._backreferences == {1: "12345678910", 2: "2345678", 3: "345", 4: "67"}
 
 
 @pytest.fixture
@@ -104,14 +104,14 @@ def test_def_with_or_with_successive_standard(def_with_or_with_nesting_standard)
     chosen_symbols, chosen_states = [], []
     while True:
         Guide_.get_next_terminals(chosen_symbols, chosen_states)  # type: ignore
-        if not Guide_.next_terminals_w_history:
+        if not Guide_._next_terminals_w_states:
             break
         chosen_symbols, chosen_states = (
-            list(Guide_.next_terminals_w_history.keys())[0],
-            list(Guide_.next_terminals_w_history.values())[0],
+            list(Guide_._next_terminals_w_states.keys())[0],
+            list(Guide_._next_terminals_w_states.values())[0],
         )
 
-    assert Guide_.backreferences == {1: "123457891011", 2: "2345789", 3: "34", 4: "78"}
+    assert Guide_._backreferences == {1: "123457891011", 2: "2345789", 3: "34", 4: "78"}
 
 
 @pytest.fixture
@@ -127,14 +127,14 @@ def test_def_with_or_with_nesting_successive_standard(
     chosen_symbols, chosen_states = [], []
     while True:
         Guide_.get_next_terminals(chosen_symbols, chosen_states)  # type: ignore
-        if not Guide_.next_terminals_w_history:
+        if not Guide_._next_terminals_w_states:
             break
         chosen_symbols, chosen_states = (
-            list(Guide_.next_terminals_w_history.keys())[0],
-            list(Guide_.next_terminals_w_history.values())[0],
+            list(Guide_._next_terminals_w_states.keys())[0],
+            list(Guide_._next_terminals_w_states.values())[0],
         )
 
-    assert Guide_.backreferences == {1: "123458910", 2: "23458", 3: "345"}
+    assert Guide_._backreferences == {1: "123458910", 2: "23458", 3: "345"}
 
 
 @pytest.fixture
@@ -161,15 +161,15 @@ def test_def_without_or_without_nesting_none_any(
     chosen_symbols, chosen_states = [], []
     while True:
         Guide_.get_next_terminals(chosen_symbols, chosen_states)  # type: ignore
-        if not Guide_.next_terminals_w_history:
+        if not Guide_._next_terminals_w_states:
             break
         choice = choices.pop(0)
         chosen_symbols, chosen_states = (
-            list(Guide_.next_terminals_w_history.keys())[choice],
-            list(Guide_.next_terminals_w_history.values())[choice],
+            list(Guide_._next_terminals_w_states.keys())[choice],
+            list(Guide_._next_terminals_w_states.values())[choice],
         )
 
-    assert Guide_.backreferences == {
+    assert Guide_._backreferences == {
         k: v
         for k, v in {
             1: "1" + "23" * counts[0] + "4" + "56" * counts[1] + "7",
@@ -210,15 +210,15 @@ def test_def_without_or_with_nesting_none_any(
     chosen_symbols, chosen_states = [], []
     while True:
         Guide_.get_next_terminals(chosen_symbols, chosen_states)  # type: ignore
-        if not Guide_.next_terminals_w_history:
+        if not Guide_._next_terminals_w_states:
             break
         choice = choices.pop(0)
         chosen_symbols, chosen_states = (
-            list(Guide_.next_terminals_w_history.keys())[choice],
-            list(Guide_.next_terminals_w_history.values())[choice],
+            list(Guide_._next_terminals_w_states.keys())[choice],
+            list(Guide_._next_terminals_w_states.values())[choice],
         )
 
-    assert Guide_.backreferences == {
+    assert Guide_._backreferences == {
         k: v
         for k, v in {
             1: "1"
@@ -258,15 +258,15 @@ def test_def_with_or_with_nesting_none_any(
     chosen_symbols, chosen_states = [], []
     while True:
         Guide_.get_next_terminals(chosen_symbols, chosen_states)  # type: ignore
-        if not Guide_.next_terminals_w_history:
+        if not Guide_._next_terminals_w_states:
             break
         choice = choices.pop(0)
         chosen_symbols, chosen_states = (
-            list(Guide_.next_terminals_w_history.keys())[choice],
-            list(Guide_.next_terminals_w_history.values())[choice],
+            list(Guide_._next_terminals_w_states.keys())[choice],
+            list(Guide_._next_terminals_w_states.values())[choice],
         )
 
-    assert Guide_.backreferences == {
+    assert Guide_._backreferences == {
         k: v
         for k, v in {
             1: "1"
@@ -310,15 +310,15 @@ def test_def_with_or_with_nesting_once_any(
     chosen_symbols, chosen_states = [], []
     while True:
         Guide_.get_next_terminals(chosen_symbols, chosen_states)  # type: ignore
-        if not Guide_.next_terminals_w_history:
+        if not Guide_._next_terminals_w_states:
             break
         choice = choices.pop(0)
         chosen_symbols, chosen_states = (
-            list(Guide_.next_terminals_w_history.keys())[choice],
-            list(Guide_.next_terminals_w_history.values())[choice],
+            list(Guide_._next_terminals_w_states.keys())[choice],
+            list(Guide_._next_terminals_w_states.values())[choice],
         )
 
-    assert Guide_.backreferences == {
+    assert Guide_._backreferences == {
         k: v
         for k, v in {
             1: "1"
@@ -360,15 +360,15 @@ def test_def_with_or_with_nesting_once_none(
     chosen_symbols, chosen_states = [], []
     while True:
         Guide_.get_next_terminals(chosen_symbols, chosen_states)  # type: ignore
-        if not Guide_.next_terminals_w_history:
+        if not Guide_._next_terminals_w_states:
             break
         choice = choices.pop(0)
         chosen_symbols, chosen_states = (
-            list(Guide_.next_terminals_w_history.keys())[choice],
-            list(Guide_.next_terminals_w_history.values())[choice],
+            list(Guide_._next_terminals_w_states.keys())[choice],
+            list(Guide_._next_terminals_w_states.values())[choice],
         )
 
-    assert Guide_.backreferences == {
+    assert Guide_._backreferences == {
         k: v
         for k, v in {
             1: "1"

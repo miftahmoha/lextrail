@@ -91,10 +91,6 @@ class Guide:
 
             return result
 
-        # Content of the symbols must be the same.
-        if not all(x == chosen_symbols[0] for x in chosen_symbols):
-            raise ParsingError("Ambiguous symbols must have same content.")
-
         chosen_symbol = chosen_symbols[0]
 
         # END_DEF can be given as choice symbol.
@@ -121,6 +117,14 @@ class Guide:
 
         if isinstance(chosen_states, CFGStatefulGraph):
             chosen_states = [chosen_states]
+
+        # Type of the symbols must be TERMINAL.
+        if not all(x.s_type == SymbolType.TERMINAL for x in chosen_symbols):
+            raise ParsingError("Symbols must be terminals.")
+
+        # Content of the symbols must be the same.
+        if not all(x == chosen_symbols[0] for x in chosen_symbols):
+            raise ParsingError("Ambiguous symbols must have identical content.")
 
         if not chosen_states:
             if not chosen_symbols:
@@ -196,7 +200,7 @@ class Guide:
                     # Retrieve index.
                     index = int(next_symbol.content[1:])
                     # Check if index is valid.
-                    if index not in self._backreferences.keys():
+                    if (index + 1) not in self._backreferences.keys():
                         raise ParsingError(f"Invalid backreference <\\{index}>.")
                     # Modify the REFERENCE symbol into a TERMINAL symbol with the corresponding content.
                     next_symbol.s_type, next_symbol.content = (
@@ -265,14 +269,6 @@ class CFGGuide:
 
             return result
 
-        # Content and state of the symbols must be the same.
-        if not all(x == chosen_symbols[0] for x in chosen_symbols) or not all(
-            x == chosen_states[0] for x in chosen_states
-        ):
-            raise ParsingError(
-                "Ambiguous symbols must have identical content and state."
-            )
-
         chosen_symbol, chosen_state = chosen_symbols[0], chosen_states[0]
 
         # END_DEF can be given as choice symbol.
@@ -305,7 +301,9 @@ class CFGGuide:
             )
 
             for index in indices:
-                self._backreferences[state_label][index] += chosen_symbol.content[1:-1]
+                # self._backreferences[state_label][index] += chosen_symbol.content[1:-1]
+                # Pop backereferences that contain non-terminal symbols.
+                self._backreferences[state_label].pop(index, None)
 
     @clear_dict_before_call("_next_terminals_w_states")
     def get_next_terminals(
@@ -320,6 +318,14 @@ class CFGGuide:
             isinstance(x, CFGStatefulGraph) for x in chosen_states
         ):
             chosen_states = [chosen_states]
+
+        # Type of the symbols must be TERMINAL.
+        if not all(x.s_type == SymbolType.TERMINAL for x in chosen_symbols):
+            raise ParsingError("Symbols must be terminals.")
+
+        # Content of the symbols must be the same.
+        if not all(x == chosen_symbols[0] for x in chosen_symbols):
+            raise ParsingError("Ambiguous symbols must have identical content.")
 
         if not chosen_states:
             if not chosen_symbols:
@@ -423,11 +429,12 @@ class CFGGuide:
                     # Retrieve index.
                     index = int(next_symbol.content[1:])
                     # Check if index is valid.
-                    if (
-                        index
-                        not in self._backreferences[chosen_states[0][-1].label].keys()
-                    ):
-                        raise ParsingError(f"Invalid backreference <\\{index}>.")
+                    if (index + 1) not in self._backreferences[
+                        chosen_states[0][-1].label
+                    ].keys():
+                        raise ParsingError(
+                            f"Invalid backreference `\\{index}`: Missing or contains non-terminal symbols."
+                        )
                     # Modify the REFERENCE symbol into a TERMINAL symbol with the corresponding content.
                     next_symbol.s_type, next_symbol.content = (
                         SymbolType.TERMINAL,
