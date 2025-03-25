@@ -1,3 +1,5 @@
+import os
+
 from collections import defaultdict, deque
 from typing import Union
 
@@ -153,3 +155,19 @@ def _extract_content_from_symbols(symbols: list[Symbol]) -> list[str]:
         content.append(symbol.content)
 
     return content
+
+
+class LTContext:
+    def __init__(self, **env):
+        self.env = env
+
+    def __enter__(self):
+        self.original = {key: os.getenv(key) for key in self.env}
+        os.environ.update(self.env)
+
+    def __exit__(self, *args):
+        for k, v in self.original.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v

@@ -119,7 +119,7 @@ class Guide:
             chosen_states = [chosen_states]
 
         # Type of the symbols must be TERMINAL.
-        if not all(x.s_type == SymbolType.TERMINAL for x in chosen_symbols):
+        if not all(x.s_type == SymbolType.TERMINAL or _is_end_def_symbol(x) for x in chosen_symbols):
             raise ParsingError("Symbols must be terminals.")
 
         # Content of the symbols must be the same.
@@ -320,7 +320,7 @@ class CFGGuide:
             chosen_states = [chosen_states]
 
         # Type of the symbols must be TERMINAL.
-        if not all(x.s_type == SymbolType.TERMINAL for x in chosen_symbols):
+        if not all(x.s_type == SymbolType.TERMINAL or _is_end_def_symbol(x) for x in chosen_symbols):
             raise ParsingError("Symbols must be terminals.")
 
         # Content of the symbols must be the same.

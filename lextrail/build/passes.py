@@ -295,7 +295,10 @@ def _parse_regex(symbols: list[str]):
         current_symbol = symbols[i]
 
         if current_symbol.startswith("/") and current_symbol.endswith("/"):
-            result.extend(_regex_apply_passes(current_symbol[1:-1]))
+            converted = _regex_apply_passes(current_symbol[1:-1])
+            # Convert regex delimiters to standard.
+            _adjust_regex_delimiters(converted)
+            result.extend(converted)
 
         else:
             result.append(current_symbol)
@@ -303,6 +306,34 @@ def _parse_regex(symbols: list[str]):
         i += 1
 
     return result
+
+
+def _adjust_regex_delimiters(symbols: list[str]):
+    i = 0
+
+    while i < len(symbols):
+        current_symbol = symbols[i]
+
+        if current_symbol == ")" and i + 1 < len(symbols) and symbols[i + 1] in "+*?":
+            # symbols.pop(i)
+            # Convert `*+?` to standard `)]}`.
+            symbols[i] = _MAP_TO_STANDARD[symbols[i + 1]][1]
+            # Convert `*+?` to standard `([{`.
+            stack_idx = 0
+            for idx in reversed(range(i)):
+                if symbols[idx] == "(":
+                    if stack_idx != 0:
+                        stack_idx -= 1
+                    else:
+                        symbols[idx] = _MAP_TO_STANDARD[symbols[i + 1]][0]
+                        break
+                elif symbols[idx] == ")":
+                    stack_idx += 1
+            symbols.pop(i + 1)
+
+        i += 1
+
+    return symbols
 
 
 def _adjust_regex_backreferences(symbols: list[str]):
