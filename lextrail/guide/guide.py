@@ -118,9 +118,12 @@ class Guide:
         if isinstance(chosen_states, CFGStatefulGraph):
             chosen_states = [chosen_states]
 
-        # Type of the symbols must be TERMINAL.
-        if not all(x.s_type == SymbolType.TERMINAL or _is_end_def_symbol(x) for x in chosen_symbols):
-            raise ParsingError("Symbols must be terminals.")
+        # Type of the symbols must be TERMINAL, REGEX or END_DEF.
+        if not all(
+            x.s_type in [SymbolType.TERMINAL, SymbolType.REGEX] or _is_end_def_symbol(x)
+            for x in chosen_symbols
+        ):
+            raise ParsingError("Symbols must be of type TERMINAL or REGEX.")
 
         # Content of the symbols must be the same.
         if not all(x == chosen_symbols[0] for x in chosen_symbols):
@@ -319,9 +322,12 @@ class CFGGuide:
         ):
             chosen_states = [chosen_states]
 
-        # Type of the symbols must be TERMINAL.
-        if not all(x.s_type == SymbolType.TERMINAL or _is_end_def_symbol(x) for x in chosen_symbols):
-            raise ParsingError("Symbols must be terminals.")
+        # Type of the symbols must be TERMINAL, REGEX or END_DEF.
+        if not all(
+            x.s_type in [SymbolType.TERMINAL, SymbolType.REGEX] or _is_end_def_symbol(x)
+            for x in chosen_symbols
+        ):
+            raise ParsingError("Symbols must be of type TERMINAL or REGEX.")
 
         # Content of the symbols must be the same.
         if not all(x == chosen_symbols[0] for x in chosen_symbols):

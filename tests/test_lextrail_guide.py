@@ -1,15 +1,10 @@
 import pytest
 from lark import Lark
 
-import sys
-
-sys.path.append("/home/achraf/lextrail")
-
 from lextrail.exceptions import InfiniteLoop
 from lextrail.guide.guide import CFGGuide
-from lextrail.utils.simulate import _get_full_guided_response
-
 from lextrail.helpers import LTContext
+from lextrail.utils.simulate import _get_full_guided_response
 
 
 @pytest.fixture
@@ -154,7 +149,7 @@ def cfg_without_infinite_loops_with_regex_with_special_delimiters_none_any():
 def test_cfg_without_infinite_loops_with_regex_with_special_delimiters_none_any(
     cfg_without_infinite_loops_with_regex_with_special_delimiters_none_any: str,
 ):
-    with LTContext(PARSE_REGEX = "1"):
+    with LTContext(PARSE_REGEX="1"):
         cfg_guide_obj = CFGGuide(
             cfg_without_infinite_loops_with_regex_with_special_delimiters_none_any
         )
@@ -186,7 +181,7 @@ def cfg_without_infinite_loops_with_regex_with_special_delimiters_none_once():
 def test_cfg_without_infinite_loops_with_regex_with_special_delimiters_none_once(
     cfg_without_infinite_loops_with_regex_with_special_delimiters_none_once: str,
 ):
-    with LTContext(PARSE_REGEX = "1"):
+    with LTContext(PARSE_REGEX="1"):
         cfg_guide_obj = CFGGuide(
             cfg_without_infinite_loops_with_regex_with_special_delimiters_none_once
         )
@@ -218,7 +213,7 @@ def cfg_without_infinite_loops_with_regex_with_special_delimiters_none_any_once(
 def test_cfg_without_infinite_loops_with_regex_with_special_delimiters_none_any_once(
     cfg_without_infinite_loops_with_regex_with_special_delimiters_none_any_once: str,
 ):
-    with LTContext(PARSE_REGEX = "1"):
+    with LTContext(PARSE_REGEX="1"):
         cfg_guide_obj = CFGGuide(
             cfg_without_infinite_loops_with_regex_with_special_delimiters_none_any_once
         )
