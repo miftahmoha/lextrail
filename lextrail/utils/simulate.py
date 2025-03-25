@@ -1,15 +1,12 @@
 import random
-import re
 from dataclasses import dataclass, field
 
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from matplotlib.widgets import TextBox
 
-from lextrail.base import Symbol, SymbolType
-from lextrail.exceptions import ParsingError
+from lextrail.base import Symbol
 from lextrail.guide.guide import CFGGenerationState, CFGGuide
-from lextrail.helpers import _is_end_def_symbol
 from lextrail.utils.draw import _setup_symbol_graph_networkx
 
 
