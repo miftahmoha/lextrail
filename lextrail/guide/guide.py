@@ -1,11 +1,12 @@
-from collections import defaultdict, deque
-from copy import deepcopy
-from functools import cached_property, wraps
+from collections import defaultdict
+from functools import wraps
+from os import getenv
 from typing import Deque
 
 from lextrail.base import (
     CFGGenerationState,
     CFGStatefulGraph,
+    StateDeque,
     Symbol,
     SymbolGraph,
     SymbolType,
@@ -17,7 +18,7 @@ from lextrail.guide.passes import (
     _check_for_potential_infinite_loops,
     _divide_cfg_grammar_into_rules,
 )
-from lextrail.helpers import _is_end_def_symbol
+from lextrail.helpers import LTContext, _is_end_def_symbol
 
 
 def build_cfg_grammar_into_symbol_graphs(cfg_grammar: str) -> dict[str, SymbolGraph]:
@@ -107,7 +108,7 @@ class Guide:
             self._backreferences[index] += chosen_symbol.content[1:-1]
 
     @clear_dict_before_call("_next_terminals_w_states")
-    def get_next_terminals(
+    def _get_next_terminals(
         self,
         chosen_symbols: list[Symbol] = [],
         chosen_states: list[CFGStatefulGraph] = [],
@@ -134,7 +135,7 @@ class Guide:
                 # Turning the symbol graph that'll be added to the stack
                 # into a stateful object `CFGStatefulGraph`.
                 start = CFGStatefulGraph(self._built_symbol_graph, "start")
-                self.get_next_terminals(chosen_states=[start])
+                self._get_next_terminals(chosen_states=[start])
                 return
             else:
                 raise ParsingError(
@@ -145,8 +146,9 @@ class Guide:
         last_visit_graphs = [chosen_state.graph for chosen_state in chosen_states]
 
         if chosen_symbols:
-            # Backreference update.
-            self.backreference(chosen_symbols)
+            if int(getenv("PARSE_BREFS", 1)):
+                # Backreference update.
+                self.backreference(chosen_symbols)
             # Update the state for `CFGStatefulGraph` to the terminal(s) symbol(s) chosen by the LLM.
             for chosen_state, chosen_symbol in zip(chosen_states, chosen_symbols):
                 chosen_state.state = chosen_symbol
@@ -191,11 +193,12 @@ class Guide:
                     SymbolType.NON_TERMINAL,
                 ] or _is_end_def_symbol(next_symbol):
                     # Pass by value, not by reference.
-                    next_chosen_state = deepcopy(chosen_state)
+                    next_chosen_state = chosen_state.copy()
                     # Set state to the last visited symbol.
                     next_chosen_state.state = next_symbol
                     # Save the next possible terminal `next_symbol` with its history.
                     self._next_terminals_w_states[next_symbol] = next_chosen_state
+
                 elif next_symbol.s_type == SymbolType.REFERENCE:
                     # Backreference successors should be unique.
                     if len(next_symbols) > 1:
@@ -212,10 +215,23 @@ class Guide:
                     )
                     self._next_terminals_w_states[next_symbol] = chosen_state
 
-    @cached_property
-    def next_terminals_w_states(self):
+    @clear_dict_before_call("_next_terminals_w_states")
+    def get_next_terminals(
+        self,
+        chosen_symbols: list[Symbol] = [],
+        chosen_states: list[CFGStatefulGraph] = [],
+    ):
+        self._get_next_terminals(chosen_symbols, chosen_states)
+
         if self._token_graphs:
-            return _update_single_token_combinations(self, self._token_graphs)
+            # Context avoids affecting the backreferences instead of using a copy of Guide.
+            with LTContext(PARSE_BREFS="0"):
+                self._next_terminals_w_states = _update_single_token_combinations(
+                    self, self._token_graphs
+                )
+
+    @property
+    def next_terminals_w_states(self):
         return self._next_terminals_w_states
 
     def set_token_graphs(self, token_graphs: list[TokenGraph]):
@@ -231,7 +247,7 @@ class Guide:
 
 class CFGGuide:
     _built_cfg_grammar: dict[str, SymbolGraph]
-    _next_terminals_w_states: dict[Symbol, Deque[CFGStatefulGraph]]
+    _next_terminals_w_states: dict[Symbol, CFGGenerationState]
     _token_graphs: list[TokenGraph]
     _backreferences: dict[str, dict[int, str]]
 
@@ -309,7 +325,7 @@ class CFGGuide:
                 self._backreferences[state_label].pop(index, None)
 
     @clear_dict_before_call("_next_terminals_w_states")
-    def get_next_terminals(
+    def _get_next_terminals(
         self,
         chosen_symbols: list[Symbol] = [],
         chosen_states: list[CFGGenerationState] = [],
@@ -338,7 +354,7 @@ class CFGGuide:
                 # Turning the symbol graph that'll be added to the stack
                 # into a stateful object `CFGStatefulGraph`.
                 start = CFGStatefulGraph(self._built_cfg_grammar["start"], "start")
-                self.get_next_terminals(chosen_states=[deque([start])])
+                self._get_next_terminals(chosen_states=[StateDeque([start])])
                 return
             else:
                 raise ParsingError(
@@ -349,9 +365,9 @@ class CFGGuide:
         last_visit_graphs = [chosen_state[-1].graph for chosen_state in chosen_states]
 
         if chosen_symbols:
-            # Backreference update.
-            # Ambiguous symbols must have same content and (same)? label.
-            self.backreference(chosen_symbols, chosen_states)
+            if int(getenv("PARSE_BREFS", 1)):
+                # Backreference update.
+                self.backreference(chosen_symbols, chosen_states)
             # Update the state for `CFGStatefulGraph` to the terminal(s) symbol(s) chosen by the LLM.
             for chosen_state, chosen_symbol in zip(chosen_states, chosen_symbols):
                 chosen_state[-1].state = chosen_symbol
@@ -393,7 +409,7 @@ class CFGGuide:
                 if not chosen_state:
                     return
                 # Should return the last label, but as a symbol of the last symbol graph.
-                self.get_next_terminals(chosen_states=[deepcopy(chosen_state)])
+                self._get_next_terminals(chosen_states=[chosen_state.copy()])
                 return
 
         for next_symbols, chosen_state in zip(next_sequences, chosen_states):
@@ -403,7 +419,7 @@ class CFGGuide:
                     SymbolType.REGEX,
                 ] or _is_end_def_symbol(next_symbol):
                     # Pass by value, not by reference.
-                    next_chosen_state = deepcopy(chosen_state)
+                    next_chosen_state = chosen_state.copy()
                     # Set state to the last visited symbol.
                     next_chosen_state[-1].state = next_symbol
                     # Save the next possible terminal `next_symbol` with its history.
@@ -412,7 +428,7 @@ class CFGGuide:
                 # Create an additional layer in the stack.
                 if next_symbol.s_type == SymbolType.NON_TERMINAL:
                     # Pass by value, not by reference.
-                    next_chosen_state = deepcopy(chosen_state)
+                    next_chosen_state = chosen_state.copy()
                     # Set up the state for the bottom stack layer, it'll save where we left for when
                     # we pop the upper stack layer. We would then search for the next symbols from
                     # the last visited `non-terminal` symbol.
@@ -426,7 +442,7 @@ class CFGGuide:
                     # Adding the stateful graph layer to the stack.
                     next_chosen_state.append(cfg_stateful_graph)
                     # Recurse over the added layer.
-                    self.get_next_terminals(chosen_states=[next_chosen_state])
+                    self._get_next_terminals(chosen_states=[next_chosen_state])
 
                 if next_symbol.s_type == SymbolType.REFERENCE:
                     # Backreference successors should be unique.
@@ -448,10 +464,23 @@ class CFGGuide:
                     )
                     self._next_terminals_w_states[next_symbol] = chosen_state
 
-    @cached_property
-    def next_terminals_w_states(self):
+    @clear_dict_before_call("_next_terminals_w_states")
+    def get_next_terminals(
+        self,
+        chosen_symbols: list[Symbol] = [],
+        chosen_states: list[CFGGenerationState] = [],
+    ):
+        self._get_next_terminals(chosen_symbols, chosen_states)
+
         if self._token_graphs:
-            return _update_single_token_combinations(self, self._token_graphs)
+            # Context avoids affecting the backreferences instead of using a copy of CFGGuide.
+            with LTContext(PARSE_BREFS="0"):
+                self._next_terminals_w_states = _update_single_token_combinations(
+                    self, self._token_graphs
+                )
+
+    @property
+    def next_terminals_w_states(self):
         return self._next_terminals_w_states
 
     def set_token_graphs(self, token_graphs: list[TokenGraph]):
@@ -463,3 +492,12 @@ class CFGGuide:
             raise ParsingError(
                 "Incorrect type, `token_graphs` should be of type `list[TokenGraph]`."
             )
+
+    def copy(self):
+        # Create a shallow copy of the CFGGuide instance without recomputing the grammar.
+        new_instance = CFGGuide.__new__(CFGGuide)
+        new_instance._built_cfg_grammar = self._built_cfg_grammar
+        new_instance._next_terminals_w_states = {}
+        new_instance._backreferences = {}
+        new_instance._token_graphs = []
+        return new_instance

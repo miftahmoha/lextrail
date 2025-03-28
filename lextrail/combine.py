@@ -1,10 +1,7 @@
-from __future__ import annotations
-
 import uuid
-from copy import deepcopy
 from dataclasses import dataclass, field
 
-from lextrail.base import CFGGenerationState, Symbol, SymbolType
+from lextrail.base import CFGGenerationState, CFGStatefulGraph, Symbol, SymbolType
 from lextrail.build.passes import _build_symbol_from_string
 from lextrail.exceptions import CombineError
 
@@ -56,7 +53,11 @@ class TokenGraph:
         return bool(self.head) and bool(self.chain)
 
     def copy(self):
-        return deepcopy(self)
+        return TokenGraph(
+            chain=self.chain.copy(),
+            head=self.head,
+            state=self.state,
+        )
 
 
 def _build_token_graphs(vocabulary: list[str]) -> list[TokenGraph]:
@@ -93,13 +94,15 @@ def _fetch_next_graphs(
             if (head := graph.head).content == next_terminal[
                 1:-1
             ]:  # Removing the `<">..<">` from terminals.
-                graph.state = head
-                result.append(graph)
+                next_graph = graph.copy()
+                next_graph.state = head
+                result.append(next_graph)
     else:
         for graph in graphs:
             if graph.chain[graph.state].content == next_terminal[1:-1]:  # type: ignore
-                graph.state = graph.chain[graph.state]  # type: ignore
-                result.append(graph)
+                next_graph = graph.copy()
+                next_graph.state = graph.chain[graph.state]  # type: ignore
+                result.append(next_graph)
 
     return result
 
@@ -131,20 +134,21 @@ def _extract_single_token_proposal(
 ) -> dict[Symbol, CFGGenerationState]:
     valid_paths: dict[Symbol, CFGGenerationState] = {}
 
-    # Pass by value, not by reference.
-    next_terminals_w_states_copy = deepcopy(next_terminals_w_states)
-
     if symbol_next.s_type == SymbolType.TERMINAL:
         combination_symbol = _build_symbol_from_string(
             '"' + completed_graph.content + '"'
         )  # Adding the `<">..<">` for terminals.
-        combination_state = next_terminals_w_states_copy[symbol_next]
+        # Avoids writing to the reference.
+        combination_state = next_terminals_w_states[symbol_next].copy()
         # Give `symbol_next`'s connections to `combination_symbol`.
         # [NOTE] Always going to be so, if a symbol exists in `next_terminals_w_states.keys()`
         # then it'll have a history.
         # [NOTE] In case the LLM picks the concatenated symbol,
         # we search for its corresponding symbol, then search for the next connections.
         if combination_state:
+            # [NOTE] Modifying a reference, it doesn't really matter that we're referencing `.tree`
+            # (copy depth stops at `.graph`), we don't change `combination_state[-1].graph.tree[symbol_next]`
+            # during the process.
             combination_state[-1].graph.tree[combination_symbol] = combination_state[
                 -1
             ].graph.tree[symbol_next]
@@ -159,10 +163,10 @@ def _extract_single_token_proposal(
 
 
 def _update_single_token_combinations(
-    cfg_guide,
+    guide,
     graphs: list[TokenGraph],
-) -> dict[Symbol, CFGGenerationState]:
-    proposals: dict[Symbol, CFGGenerationState] = {}
+):
+    proposals: dict[Symbol, CFGStatefulGraph | CFGGenerationState] = {}
 
     def recurse_update(
         next_terminals_w_states: dict[Symbol, CFGGenerationState],
@@ -171,19 +175,14 @@ def _update_single_token_combinations(
     ):
         nonlocal proposals
 
-        # Pass by value, not by reference.
-        cfg_guide_copy = deepcopy(cfg_guide)
-        next_terminals_w_states_copy = deepcopy(next_terminals_w_states)
-        next_token_graphs_copy = deepcopy(next_token_graphs)
-
-        for symbol_next, state_next in next_terminals_w_states_copy.items():
+        for symbol_next, state_next in next_terminals_w_states.items():
             current_next_token_graphs = _fetch_next_graphs(
-                symbol_next.content, next_token_graphs_copy, is_head=is_head
+                symbol_next.content, next_token_graphs, is_head=is_head
             )
 
             if current_next_token_graphs:
-                # [NOTE] The finalized graph will be removed from the list, to avoid
-                # KeyError exceptions.
+                # [NOTE] The finalized graph will be removed from
+                # the `current_next_token_graphs`, to avoid KeyError in the next iteration.
                 finalized_token_graph = _fetch_completed_graph(
                     current_next_token_graphs
                 )
@@ -199,10 +198,10 @@ def _update_single_token_combinations(
                 if len(current_next_token_graphs) == 0:
                     continue
 
-                cfg_guide_copy.get_next_terminals([symbol_next], [state_next])
+                guide._get_next_terminals([symbol_next], [state_next])
 
                 recurse_update(
-                    cfg_guide_copy._next_terminals_w_states,
+                    guide._next_terminals_w_states.copy(),
                     current_next_token_graphs,
                     is_head=False,
                 )
@@ -210,7 +209,7 @@ def _update_single_token_combinations(
                 continue
 
     # Get `next_terminals_w_states`.
-    next_terminals_w_states = cfg_guide._next_terminals_w_states
+    next_terminals_w_states = guide._next_terminals_w_states.copy()
     # Run.
     recurse_update(next_terminals_w_states, graphs, is_head=True)
     # Update `cfg_generation_state`.

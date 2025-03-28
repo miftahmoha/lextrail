@@ -1,9 +1,8 @@
 import uuid
-from collections import defaultdict
-from copy import deepcopy
+from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Deque, Generic, Iterable, Iterator, Optional, TypeVar
+from typing import Any, Generic, Iterable, Iterator, Optional, TypeVar
 
 T = TypeVar("T")
 
@@ -19,7 +18,7 @@ class OrderedSet(Generic[T]):
         if item in self._dict:
             self._dict.pop(item)
 
-    def extend(self, other) -> "OrderedSet":
+    def extend(self, other) -> "OrderedSet[T]":
         for symbol in other:
             self.add(symbol)
         return self
@@ -50,8 +49,8 @@ class OrderedSet(Generic[T]):
     def __and__(self, other: "OrderedSet[T]") -> "OrderedSet[T]":
         return OrderedSet(self._dict.keys() & other._dict.keys())
 
-    def copy(self):
-        return deepcopy(self)
+    def copy(self) -> "OrderedSet[T]":
+        return OrderedSet(self._dict.copy())
 
 
 @dataclass
@@ -84,7 +83,7 @@ class SymbolType(Enum):
     REFERENCE = 5
 
 
-@dataclass
+@dataclass(slots=True)
 class SymbolGraph:
     initials: OrderedSet[Symbol] = field(default_factory=OrderedSet)
     tree: dict[Symbol, OrderedSet[Symbol]] = field(
@@ -113,7 +112,12 @@ class SymbolGraph:
                 symbol.s_metadata = metadata
 
     def copy(self):
-        return deepcopy(self)
+        return SymbolGraph(
+            initials=self.initials.copy(),
+            tree=self.tree.copy(),
+            finals=self.finals.copy(),
+            metadata=self.metadata.copy(),
+        )
 
 
 class SymbolGraphType(Enum):
@@ -142,5 +146,19 @@ class CFGStatefulGraph:
             and (self.state == other.state)
         )
 
+    def copy(self):
+        return CFGStatefulGraph(
+            graph=self.graph.copy(), label=self.label, state=self.state
+        )
 
-CFGGenerationState = Deque[CFGStatefulGraph]
+
+class StateDeque(deque, Generic[T]):
+    def copy(self) -> "StateDeque[T]":
+        return StateDeque(state.copy() for state in self)
+
+    # Ensure other methods (like slicing) also use this behavior.
+    def __copy__(self) -> "StateDeque[T]":
+        return self.copy()
+
+
+CFGGenerationState = StateDeque[CFGStatefulGraph]
