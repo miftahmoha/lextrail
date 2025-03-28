@@ -205,9 +205,10 @@ def test_int_with_mlt_level_combination_uni_or_mlt_choice(
     gpt2_vocabulary_subset_as_graphs: list[TokenGraph],
 ):
     cfg_object = CFGGuide(cfg_with_mlt_level_combination_uni_or_mlt_choice)
-    cfg_object.get_next_terminals()
 
     cfg_object.set_token_graphs(gpt2_vocabulary_subset_as_graphs)
+
+    cfg_object.get_next_terminals()
 
     next_terminals_as_str = _extract_content_from_symbols(
         list(cfg_object.next_terminals_w_states.keys())
@@ -286,9 +287,10 @@ def test_int_with_mlt_level_combination_mlt_or_mlt_choice(
     test_vocabulary_subset_as_graphs: list[TokenGraph],
 ):
     cfg_object = CFGGuide(cfg_with_mlt_level_combination_mlt_or_mlt_choice)
-    cfg_object.get_next_terminals()
 
     cfg_object.set_token_graphs(test_vocabulary_subset_as_graphs)
+
+    cfg_object.get_next_terminals()
 
     next_terminals_as_str = _extract_content_from_symbols(
         list(cfg_object.next_terminals_w_states.keys())
