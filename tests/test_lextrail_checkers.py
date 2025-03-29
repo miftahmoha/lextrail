@@ -1,13 +1,13 @@
 import pytest
 
-from lextrail.build.build import _convert_str_def_to_str_queue
+from lextrail.build.passes import _convert_str_def_to_str_queue
 from lextrail.exceptions import (
     InvalidDelimiters,
     InvalidGrammar,
     InvalidSymbol,
     MissingQuote,
 )
-from lextrail.guide.guide import _divide_cfg_grammar_into_rules
+from lextrail.guide.passes import _divide_cfg_grammar_into_rules
 
 # ----------------------------- InvalidSymbol -----------------------------
 

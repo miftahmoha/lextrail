@@ -11,7 +11,7 @@ from lextrail.base import (
     SymbolGraph,
     SymbolType,
 )
-from lextrail.build.build import build_symbol_graph
+from lextrail.build import build_symbol_graph
 from lextrail.combine import TokenGraph, _update_single_token_combinations
 from lextrail.exceptions import ParsingError
 from lextrail.guide.passes import (

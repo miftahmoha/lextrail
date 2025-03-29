@@ -1,7 +1,7 @@
 import pytest
 
 from lextrail.base import OrderedSet, Symbol, SymbolGraph
-from lextrail.build.build import (
+from lextrail.build import (
     build_symbol_graph,
     connect_symbol_graph,
     construct_symbol_subgraph,

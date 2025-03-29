@@ -1,6 +1,6 @@
 import pytest
 
-from lextrail.guide.guide import Guide
+from lextrail.guide import Guide
 
 
 @pytest.fixture

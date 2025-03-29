@@ -6,7 +6,7 @@ from matplotlib.animation import FuncAnimation
 from matplotlib.widgets import TextBox
 
 from lextrail.base import Symbol
-from lextrail.guide.guide import CFGGenerationState, CFGGuide
+from lextrail.guide import CFGGenerationState, CFGGuide
 from lextrail.utils.draw import _setup_symbol_graph_networkx
 
 

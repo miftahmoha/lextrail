@@ -4,7 +4,7 @@ from matplotlib import pyplot as plt
 from matplotlib.widgets import TextBox
 
 from lextrail.base import CFGGenerationState, Symbol
-from lextrail.guide.guide import CFGGuide
+from lextrail.guide import CFGGuide
 from lextrail.utils.draw import _setup_symbol_graph_networkx
 from lextrail.utils.simulate import _get_partial_guided_response, _MockLLM
 

@@ -5,7 +5,7 @@ from lextrail.combine import (
     _build_token_graphs,
     _update_single_token_combinations,
 )
-from lextrail.guide.guide import CFGGuide
+from lextrail.guide import CFGGuide
 from lextrail.helpers import (
     _extract_content_from_symbols,
     _fetch_terminal_from_content_in_sequence,
