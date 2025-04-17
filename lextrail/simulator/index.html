@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Graph Visualization Tool</title>
+    <script src="https://unpkg.com/vis-network@latest/dist/vis-network.min.js"></script>
+    <link href="https://unpkg.com/vis-network@latest/dist/vis-network.min.css" rel="stylesheet" type="text/css" />
+    <link href="styles.css" rel="stylesheet" type="text/css" />
+    <script src="script.js" defer></script>
+</head>
+<body>
+    <div class="sidebar" id="sidebar">
+        <h2>Subgraphs</h2>
+        <p>Click on a subgraph to view it</p>
+        <div id="sidebar-items"></div>
+    </div>
+    
+    <div class="main-content">
+        <h1>Graph Visualization Tool</h1>
+        <div class="status" id="status">Loading graphs from server...</div>
+        
+        <!-- Control buttons -->
+        <div class="controls">
+            <button id="btn-prev" disabled>◀ Previous</button>
+            <button id="btn-toggle-pause">Pause</button>
+            <button id="btn-next" disabled>Next ▶</button>
+            <button id="btn-interrupt" class="danger">Interrupt</button>
+            
+            <div class="speed-control">
+                <label>Delay (ms):</label>
+                <div class="speed-container">
+                    <input type="number" id="speed-input" min="0" value="500" class="speed-input">
+                    <button id="apply-speed">Apply</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="graph-container" id="current-graph"></div>
+        <div class="frame-counter" id="frame-counter">Frame 0/0</div>
+        <textarea class="llm-response" id="llm-response" readonly>Waiting for LLM response...</textarea>
+    </div>
+</body>
+</html>
