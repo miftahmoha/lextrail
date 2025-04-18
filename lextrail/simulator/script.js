@@ -16,6 +16,7 @@ const btnPrev = document.getElementById('btn-prev');
 const btnTogglePause = document.getElementById('btn-toggle-pause');
 const btnNext = document.getElementById('btn-next');
 const btnInterrupt = document.getElementById('btn-interrupt');
+const btnReset = document.getElementById('btn-reset');
 const speedInput = document.getElementById('speed-input');
 const applySpeedBtn = document.getElementById('apply-speed');
 
@@ -37,6 +38,16 @@ btnNext.addEventListener('click', () => {
 btnInterrupt.addEventListener('click', () => {
     if (confirm('Are you sure you want to interrupt the simulation? This cannot be undone.')) {
         sendControlCommand('interrupt');
+    }
+});
+btnReset.addEventListener('click', () => {
+    if (confirm('Are you sure you want to reset the simulation?')) {
+        currentFrame = 0;
+        shouldFetch = true;
+        document.querySelectorAll('.sidebar-item').forEach(el => {
+            el.remove();
+        });
+        sendControlCommand('reset');
     }
 });
 applySpeedBtn.addEventListener('click', () => {
@@ -309,12 +320,13 @@ function displayGraph(index) {
 
 
 function loadGraphs() {
-    if (!shouldFetch) return;
+    if (!shouldFetch) null;
 
     fetch("/graph")
         .then(response => response.json())
         .then(data => {
             if (JSON.stringify(data.updates) !== JSON.stringify(allPreviousData.updates)) {
+
                 allPreviousData = data;
 
                 const newUpdates = data.updates.slice(currentFrame);
@@ -331,7 +343,7 @@ function loadGraphs() {
             }
 
             // Update LLM response (fragmented strings allows simple transitions to previous frames).
-            document.getElementById('llm-response').value = data._fragmented_llm_response.slice(0, currentFrame).join('') || "No response available";
+            document.getElementById('llm-response').value = data._response.slice(0, currentFrame).join('') || "No response available";
 
             // Update simulation state
             isPaused = data._is_paused;
