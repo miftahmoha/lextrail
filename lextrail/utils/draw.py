@@ -5,7 +5,12 @@ import matplotlib.pyplot as plt
 import networkx as nx
 
 from lextrail.base import CFGStatefulGraph, Symbol, SymbolGraph, SymbolType
-from lextrail.helpers import _get_symbols_from_generated_symbol_graph
+from lextrail.helpers import (
+    _get_symbols_from_generated_symbol_graph,
+    _is_end_def_symbol,
+)
+
+colors = {"default": "lightblue", "modern_red": "#FF6B6B", "golden_orange": "#FFD166"}
 
 
 def _setup_symbol_graph_networkx(
@@ -50,26 +55,27 @@ def _setup_symbol_graph_networkx(
             G.add_edge(symbol, connection)
 
     # Setting the layout.
-    pos = nx.nx_agraph.graphviz_layout(G, prog="dot")
+    pos = nx.nx_agraph.graphviz_layout(G, prog="neato")
 
     # Setting a highlight.
     if not highlights:
-        node_color = ["lightblue" for _ in symbols.values()]
+        node_color = [colors["default"] for _ in symbols.values()]
     else:
         node_color = [
             (
-                "red"
+                colors["modern_red"]
                 if (symbol in highlights and symbol.s_type == SymbolType.NON_TERMINAL)
                 else (
-                    "orange"
+                    colors["golden_orange"]
                     if (
                         symbol in highlights
                         and (
                             symbol.s_type == SymbolType.TERMINAL
                             or symbol.s_type == SymbolType.REGEX
+                            or _is_end_def_symbol(symbol)
                         )
                     )
-                    else "lightblue"
+                    else colors["default"]
                 )
             )
             for symbol in symbols.values()
@@ -84,11 +90,12 @@ def _setup_symbol_graph_networkx(
         node_size=size,
         node_color=node_color,  # type: ignore
         edgecolors="gray",
-        alpha=0.8,
+        alpha=0.85,
         edge_color="gray",
         font_size=12,
-        font_family="monospace",
+        font_family="sans-serif",
         ax=ax,
+        connectionstyle="arc3, rad=0.1",
     )
 
 

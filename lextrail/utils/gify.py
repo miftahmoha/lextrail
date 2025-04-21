@@ -6,13 +6,13 @@ from matplotlib.widgets import TextBox
 from lextrail.base import CFGGenerationState, Symbol
 from lextrail.guide import CFGGuide
 from lextrail.utils.draw import _setup_symbol_graph_networkx
-from lextrail.utils.simulate import _get_partial_guided_response, _MockLLM
+from lextrail.utils.simulate import MockLLM, _get_partial_guided_response
 
 
 def gify_cfg_guide(cfg_grammar: str, _RATIO: int = 4000):
     cfg_guide_obj = CFGGuide(cfg_grammar)
 
-    mock_llm = _MockLLM()
+    mock_llm = MockLLM()
 
     max_num_plots = len(cfg_guide_obj._built_cfg_grammar.keys())
 
@@ -59,7 +59,7 @@ def gify_cfg_guide(cfg_grammar: str, _RATIO: int = 4000):
         for i in range(m + n, len(axes.flat)):  # type: ignore
             axes.flat[i].axis("off")
 
-        text_box.set_val(mock_llm.response)
+        text_box.set_val("".join(mock_llm.response))
 
         # Convert plot to image.
         figure.canvas.draw()

@@ -1,18 +1,15 @@
 import json
 import os
-import sys
 import threading
 import time
+from copy import deepcopy
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any
-from copy import deepcopy
-
-sys.path.append("/home/achraf/lextrail")
 
 from lextrail.base import CFGStatefulGraph, Symbol, SymbolGraph
 from lextrail.guide import CFGGenerationState, CFGGuide
 from lextrail.helpers import _get_symbols_from_generated_symbol_graph
-from lextrail.utils.simulate import _get_partial_guided_response, _MockLLM
+from lextrail.utils.simulate import MockLLM, _get_partial_guided_response
 
 VizGraph = dict[str, list[dict[str, str]]]
 
@@ -137,7 +134,7 @@ class Simulate:
         httpd.serve_forever()
 
     def get_next_state(self):
-        mock_llm = _MockLLM()
+        mock_llm = MockLLM()
         chosen_symbols: list[Symbol] = []
         chosen_states: list[CFGGenerationState] = []
 
@@ -200,6 +197,8 @@ class Simulate:
 
 
 class SimpleServer(BaseHTTPRequestHandler):
+    simulate: "Simulate"
+
     @classmethod
     def initiate(cls, simulate: Simulate):
         cls.simulate = simulate

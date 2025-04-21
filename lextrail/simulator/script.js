@@ -2,6 +2,7 @@
 let allPreviousData = [];
 let allThumbnailGraphs = [];
 let allSidebarItems = [];
+let lastActiveItem = null;
 let mainNetwork = null;
 let shouldFetch = true;
 let isPaused = false;
@@ -11,6 +12,59 @@ let totalFrames = 0;
 let currentFrame = 0;
 
 
+// Theme modes.
+const themeToggle = document.getElementById('theme-toggle');
+const root = document.documentElement;
+const icon = themeToggle.querySelector('i');
+
+// Font color update for each mode.
+function updateGraphFontColors() {
+    const newFontColor = root.classList.contains('light-mode')? '#000000' : '#ffffff';
+
+    // Update thumbnail graphs.
+    allThumbnailGraphs.forEach((graph, index) => {
+        if (graph) {
+            const nodes = graph.body.data.nodes;
+            nodes.forEach(node => {
+                nodes.update({
+                    id: node.id,
+                    font: {
+                        color: newFontColor
+                    }
+                });
+            });
+        }
+    });
+
+    // Update display graph.
+    if (mainNetwork) {
+        const nodes = mainNetwork.body.data.nodes;
+        nodes.forEach(node => {
+            nodes.update({
+                id: node.id,
+                font: {
+                    color: newFontColor
+                }
+            });
+        });
+    }
+}
+
+// Mode transitions. 
+themeToggle.addEventListener('click', () => {
+    if (root.classList.contains('light-mode')) {
+        root.classList.remove('light-mode');
+        icon.className = 'fas fa-sun';
+        localStorage.setItem('theme', 'dark');
+    } else {
+        root.classList.add('light-mode');
+        icon.className = 'fas fa-moon';
+        localStorage.setItem('theme', 'light');
+    }
+    updateGraphFontColors()
+});
+
+
 // Control elements.
 const btnPrev = document.getElementById('btn-prev');
 const btnTogglePause = document.getElementById('btn-toggle-pause');
@@ -18,6 +72,7 @@ const btnNext = document.getElementById('btn-next');
 const btnInterrupt = document.getElementById('btn-interrupt');
 const btnReset = document.getElementById('btn-reset');
 const speedInput = document.getElementById('speed-input');
+const speedSlider = document.getElementById('speed-slider');
 const applySpeedBtn = document.getElementById('apply-speed');
 
 
@@ -50,12 +105,29 @@ btnReset.addEventListener('click', () => {
         sendControlCommand('reset');
     }
 });
+speedSlider.addEventListener('input', () => {
+    speedInput.value = speedSlider.value;
+});
+
+speedInput.addEventListener('input', () => {
+    speedSlider.value = speedInput.value;
+});
 applySpeedBtn.addEventListener('click', () => {
     const value = parseInt(speedInput.value);
     if (!isNaN(value) && value >= 0) {
         sendControlCommand('set_speed', { rate: value / 1000 });
     }
 });
+
+// Update play/pause button icon.
+function updatePlayPauseButton() {
+    const icon = btnTogglePause.querySelector('i');
+    if (isPaused) {
+        icon.className = 'fas fa-play';
+    } else {
+        icon.className = 'fas fa-pause';
+    }
+}
 
 // Sending data to the server.
 function sendControlCommand(action, extraData = {}) {
@@ -88,53 +160,16 @@ function updateFrameCounter(current, total) {
 
 function updateControlButtons() {
     btnTogglePause.disabled = isInterrupted || isComplete;
-    btnTogglePause.textContent = isPaused ? "Resume" : "Pause";
+    updatePlayPauseButton();
     btnPrev.disabled = currentFrame <= 1 || isInterrupted;
     btnNext.disabled = currentFrame >= totalFrames || isInterrupted;
     btnInterrupt.disabled = isInterrupted || isComplete;
     speedInput.disabled = isInterrupted || isComplete;
     applySpeedBtn.disabled = isInterrupted || isComplete;
-
-    if (isInterrupted) {
-        btnInterrupt.textContent = "Interrupted";
-    }
 }
 
-
-// Transition animations.
-// Convert HEX to RGB object.
-function hexToRgb(hex) {
-    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    return result ? {
-        r: parseInt(result[1], 16),
-        g: parseInt(result[2], 16),
-        b: parseInt(result[3], 16)
-    } : { r: 0, g: 0, b: 0 };
-}
-
-// Color interpolation.
-function interpolateColor(fromColor, toColor, progress) {
-    const from = hexToRgb(fromColor);
-    const to = hexToRgb(toColor);
-
-    const r = Math.round(from.r + (to.r - from.r) * progress);
-    const g = Math.round(from.g + (to.g - from.g) * progress);
-    const b = Math.round(from.b + (to.b - from.b) * progress);
-
-    return `rgb(${r}, ${g}, ${b})`;
-}
-
-// Highlight animation function.
-function animateHighlightTransitionWithAnimation(
-    network,
-    fromId,
-    toId,
-    highlightColor = '#f1c232',
-    dimColor = "#f3f6f4",
-    duration = 1000
-) {
-    const startTime = performance.now();
-
+// Moves the highlight from a node A to a node B.
+function moveHighlight(network, fromId, toId) {
     const nodes = network.body.data.nodes;
     const fromNode = fromId ? nodes.get(fromId) : null;
     const toNode = toId ? nodes.get(toId) : null;
@@ -143,67 +178,33 @@ function animateHighlightTransitionWithAnimation(
         throw new Error("Highlight sent to an invalid node.");
     }
 
-    const originalNewColor = toNode.color?.background || '#97C2FC';
-    const originalOldColor = fromNode?.color?.background || '#97C2FC';
-
-    function animate(currentTime) {
-        const elapsed = currentTime - startTime;
-        const progress = Math.min(elapsed / duration, 1);
-
-        // Update new node.
-        nodes.update({
-            id: toId,
-            color: {
-                background: interpolateColor(originalNewColor, highlightColor, progress),
-                border: interpolateColor(originalNewColor, highlightColor, progress)
-            }
-        });
-
-        // Update old node if it exists.
-        if (fromNode) {
-            nodes.update({
-                id: fromId,
-                color: {
-                    background: interpolateColor(originalOldColor, dimColor, progress),
-                    border: interpolateColor(originalOldColor, dimColor, progress)
-                }
-            });
-        }
-
-        if (progress < 1) {
-            requestAnimationFrame(animate);
-        }
-    }
-    requestAnimationFrame(animate);
-}
-
-// Temporary classic transition.
-function animateHighlightTransition(network, fromId, toId) {
-    const nodes = network.body.data.nodes;
-    const fromNode = fromId ? nodes.get(fromId) : null;
-    const toNode = toId ? nodes.get(toId) : null;
-
-    if (!toNode) {
-        throw new Error("Highlight sent to an invalid node.");
-    }
-
-    // Update toNode to orange.
+    // Update toNode to highlighted state.
     nodes.update({
         id: toId,
         color: {
-            background: 'orange',
-            border: 'orange'
-        }
+            background: '#06b6d4',
+            border: '#06b6d4'
+        },
+        shadow: {
+            enabled: true,
+            color: '#06b6d4',
+            size: 10,
+            x: 0,
+            y: 0
+        },
     });
 
-    // Update fromNode to lightblue (if it exists).
+    // Reset fromNode to default color if it exists.
     if (fromNode) {
         nodes.update({
             id: fromId,
             color: {
                 background: 'lightblue',
-                border: 'lightblue'
-            }
+                border: 'rgba(255, 255, 255, 0.05)',
+            },
+            shadow: {
+                enabled: false,
+            },
         });
     }
 }
@@ -220,8 +221,9 @@ function updateGraphs(currentUpdates) {
     // Then delete from highest to lowest to avoid index shifting problems.
     indicesToDelete.forEach(index => {
         const sidebarItem = document.getElementById(`sidebar-item-${index}`);
+        sidebarItem.classList.add('sidebar-item-remove');
         if (sidebarItem) {
-            sidebarItems.removeChild(sidebarItem);
+            // sidebarItems.removeChild(sidebarItem);
             if (allThumbnailGraphs[index]) {
                 allThumbnailGraphs[index].destroy();
                 allThumbnailGraphs.splice(index, 1);
@@ -234,43 +236,109 @@ function updateGraphs(currentUpdates) {
     // Addition.
     // Add graphs.
     Object.keys(currentUpdates.addu).forEach(index => {
-        // Creating the thumbnail.
-        const item = document.createElement('div');
-        item.className = 'sidebar-item';
-        item.id = `sidebar-item-${index}`;
-        // The `${index + 1}` could take `n, m` indices from the backend.
-        item.innerHTML = `
+        // Check if there's an existing item with this index.
+        const existingItem = document.getElementById(`sidebar-item-${index}`);
+
+        if (existingItem) {
+            // If it exists, remove the `fadeSlideOut` animation and add the `fadeSlideIn` one.
+            existingItem.classList.remove('sidebar-item-remove');
+            existingItem.classList.add('sidebar-item-new');
+            // Plot and store graph at index.
+            const container = document.getElementById(`thumbnail-${index}`);
+            const options = {
+                nodes: {
+                    shape: "dot",
+                    size: 15,
+                    color: {
+                        background: 'rgba(173, 216, 230, 1)',
+                        border: 'rgba(255, 255, 255, 0.5)',
+                    },
+                    font: {
+                        face: 'Space Mono',
+                        color: root.classList.contains('light-mode')? '#000000' : '#ffffff',
+                        size: 0,
+                        strokeWidth: 0
+                    },
+                },
+                edges: {
+                    arrows: "to",
+                    color: {
+                        color: 'rgba(255, 255, 255, 0.2)',
+                        highlight: '#06b6d4'
+                    },
+                    width: 1
+                },
+            };
+            const graphDataClone = structuredClone(currentUpdates.addu[index]);
+            allThumbnailGraphs[index] = new vis.Network(container, graphDataClone, options);
+        } else {
+            // Creating the thumbnail.
+            const item = document.createElement('div');
+            item.className = 'sidebar-item';
+            item.id = `sidebar-item-${index}`;
+            // Add the `fadeSlideIn` animation.
+            item.classList.add('sidebar-item-new');
+            // The `${index + 1}` could take `n, m` indices from the backend.
+            item.innerHTML = `
             <div>Subgraph ${index}</div>
             <div class="sidebar-thumbnail" id="thumbnail-${index}"></div>
-        `;
-        // Click event.
-        item.onclick = function () {
-            document.querySelectorAll('.sidebar-item').forEach(el => {
-                el.classList.remove('active');
-            });
-            this.classList.add('active');
-            displayGraph(index);
-        };
-        sidebarItems.appendChild(item);
-        // Plot and store graph at index.
-        const container = document.getElementById(`thumbnail-${index}`);
-        const options = {
-            nodes: { shape: "dot", size: 20 },
-            edges: { arrows: "to" },
-        };
-        const graphDataClone = structuredClone(currentUpdates.addu[index]);
-        allThumbnailGraphs[index] = new vis.Network(container, graphDataClone, options);
+            `;
+            // Click event.
+            item.onclick = function () {
+                document.querySelectorAll('.sidebar-item').forEach(el => {
+                    el.classList.remove('active');
+                });
+                this.classList.add('active');
+                displayGraph(index);
+            };
+            sidebarItems.appendChild(item);
+            // Plot and store graph at index.
+            const container = document.getElementById(`thumbnail-${index}`);
+            const options = {
+                nodes: {
+                    shape: "dot",
+                    size: 15,
+                    color: {
+                        background: 'rgba(173, 216, 230, 1)',
+                        border: 'rgba(255, 255, 255, 0.5)',
+                    },
+                    font: {
+                        face: 'Space Mono',
+                        color: root.classList.contains('light-mode')? '#000000' : '#ffffff',
+                        size: 0,
+                        strokeWidth: 0
+                    },
+                },
+                edges: {
+                    arrows: "to",
+                    color: {
+                        color: 'rgba(255, 255, 255, 0.2)',
+                        highlight: '#06b6d4'
+                    },
+                    width: 1
+                },
+            };
+            const graphDataClone = structuredClone(currentUpdates.addu[index]);
+            allThumbnailGraphs[index] = new vis.Network(container, graphDataClone, options);
+        }
     });
 
+
     // Set the sidebar item with highest index as active.
-    const index = allThumbnailGraphs.length - 1
+    const index = allThumbnailGraphs.length - 1;
     if (index >= 0) {
-        const activeItem = document.getElementById(`sidebar-item-${index}`);
-        if (activeItem) {
+        activeItem = document.getElementById(`sidebar-item-${index}`);
+        if (activeItem && lastActiveItem !== activeItem) {
+            // Disable the last activated sidebar item if different.
+            if (lastActiveItem) {
+                lastActiveItem.classList.remove('active');
+            }
             // Add active class.
             activeItem.classList.add('active');
-            // Optionally display this graph by default.
+            // Display its graph on the main block by default.
             displayGraph(index);
+            // Save it.
+            lastActiveItem = activeItem
         }
     }
 
@@ -285,7 +353,7 @@ function updateGraphs(currentUpdates) {
                 // a vizUpdate instance is `deletion`, thus we move nodes of a deleted graph.
                 // (deletion has to be before addition and `moving` has to be before `addition`).
                 if (!toId) continue;
-                animateHighlightTransition(allThumbnailGraphs[index], fromId, toId);
+                moveHighlight(allThumbnailGraphs[index], fromId, toId);
             }
         }
         else {
@@ -298,9 +366,37 @@ function updateGraphs(currentUpdates) {
 // Displays graphs from the sidebar.
 function displayGraph(index) {
     const container = document.getElementById('current-graph');
+    // Add fade class
+    container.classList.add('graph-fade');
+
+    // Remove the class after animation completes
+    setTimeout(() => {
+        container.classList.remove('graph-fade');
+    }, 500);
+
     const options = {
-        nodes: { shape: "dot", size: 20 },
-        edges: { arrows: "to" },
+        nodes: {
+            shape: "dot",
+            size: 20,
+            color: {
+                background: 'rgba(173, 216, 230, 1)',
+                border: 'rgba(255, 255, 255, 0.5)',
+            },
+            font: {
+                face: 'Space Mono',
+                color: root.classList.contains('light-mode')? '#000000' : '#ffffff',
+                size: 14,
+                strokeWidth: 0
+            },
+        },
+        edges: {
+            arrows: "to",
+            color: {
+                color: 'rgba(255, 255, 255, 0.2)',
+                highlight: '#06b6d4'
+            },
+            width: 1.5
+        },
     };
     // Get the network instance at index.
     const networkInstance = allThumbnailGraphs[index];
@@ -312,6 +408,8 @@ function displayGraph(index) {
     };
     if (mainNetwork) {
         mainNetwork.setData(graphDataClone);
+        // If the theme changes.
+        mainNetwork.setOptions(options);
     } else {
         mainNetwork = new vis.Network(container, graphDataClone, options);
     }
