@@ -128,8 +128,8 @@ class Simulate:
 
         # Run the server.
         server_address = ("localhost", port)
-        SimpleServer.initiate(self)
-        httpd = HTTPServer(server_address, SimpleServer)
+        Server.initiate(self)
+        httpd = HTTPServer(server_address, Server)
         print(f"Server running at http://localhost:{port}")
         httpd.serve_forever()
 
@@ -196,7 +196,7 @@ class Simulate:
                 time.sleep(self.settings["speed"])
 
 
-class SimpleServer(BaseHTTPRequestHandler):
+class Server(BaseHTTPRequestHandler):
     simulate: "Simulate"
 
     @classmethod
@@ -258,7 +258,7 @@ class SimpleServer(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
 
-    def get_html_content(self: "SimpleServer") -> str:
+    def get_html_content(self: "Server") -> str:
         contents: list[str] = []
         current_dir = os.path.dirname(os.path.abspath(__file__))
         for filename in ["index.html", "style.css", "script.js"]:
@@ -268,9 +268,6 @@ class SimpleServer(BaseHTTPRequestHandler):
         <!DOCTYPE html>
         <html>
         <head>
-            <title>Graph Visualization Tool</title>
-            <script src="https://unpkg.com/vis-network@latest/dist/vis-network.min.js"></script>
-            <link href="https://unpkg.com/vis-network@latest/dist/vis-network.min.css" rel="stylesheet" type="text/css" />
             <style>
         {contents[1]}
             </style>
@@ -287,7 +284,7 @@ class SimpleServer(BaseHTTPRequestHandler):
 
 def run_server(port=8000):
     server_address = ("localhost", port)
-    httpd = HTTPServer(server_address, SimpleServer)
+    httpd = HTTPServer(server_address, Server)
     print(f"Server running at http://localhost:{port}")
     httpd.serve_forever()
 

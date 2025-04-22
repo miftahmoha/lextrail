@@ -19,7 +19,7 @@ const icon = themeToggle.querySelector('i');
 
 // Font color update for each mode.
 function updateGraphFontColors() {
-    const newFontColor = root.classList.contains('light-mode')? '#000000' : '#ffffff';
+    const newFontColor = root.classList.contains('light-mode') ? '#000000' : '#ffffff';
 
     // Update thumbnail graphs.
     allThumbnailGraphs.forEach((graph, index) => {
@@ -255,7 +255,7 @@ function updateGraphs(currentUpdates) {
                     },
                     font: {
                         face: 'Space Mono',
-                        color: root.classList.contains('light-mode')? '#000000' : '#ffffff',
+                        color: root.classList.contains('light-mode') ? '#000000' : '#ffffff',
                         size: 0,
                         strokeWidth: 0
                     },
@@ -304,7 +304,7 @@ function updateGraphs(currentUpdates) {
                     },
                     font: {
                         face: 'Space Mono',
-                        color: root.classList.contains('light-mode')? '#000000' : '#ffffff',
+                        color: root.classList.contains('light-mode') ? '#000000' : '#ffffff',
                         size: 0,
                         strokeWidth: 0
                     },
@@ -384,7 +384,7 @@ function displayGraph(index) {
             },
             font: {
                 face: 'Space Mono',
-                color: root.classList.contains('light-mode')? '#000000' : '#ffffff',
+                color: root.classList.contains('light-mode') ? '#000000' : '#ffffff',
                 size: 14,
                 strokeWidth: 0
             },
