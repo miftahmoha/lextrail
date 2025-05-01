@@ -1,8 +1,8 @@
 from collections import defaultdict
 from functools import wraps
 from os import getenv
-from typing import Deque
 
+from lextrail.assemble import AssemblyGraph, _update_single_token_combinations
 from lextrail.base import (
     CFGGenerationState,
     CFGStatefulGraph,
@@ -12,7 +12,6 @@ from lextrail.base import (
     SymbolType,
 )
 from lextrail.build import build_symbol_graph
-from lextrail.combine import TokenGraph, _update_single_token_combinations
 from lextrail.exceptions import ParsingError
 from lextrail.guide.passes import (
     _check_for_potential_infinite_loops,
@@ -54,13 +53,13 @@ def clear_dict_before_call(dict_name: str):
 class Guide:
     _built_symbol_graph: SymbolGraph
     _next_terminals_w_states: dict[Symbol, CFGStatefulGraph]
-    _token_graphs: list[TokenGraph]
+    _token_graphs: AssemblyGraph
     _backreferences: dict[int, str]
 
     def __init__(self, definition: str):
         self._built_symbol_graph = build_symbol_graph(definition)
         self._next_terminals_w_states = {}
-        self._token_graphs = []
+        self._token_graphs = AssemblyGraph(initials=[], tree={}, finals=[])
         self._backreferences = defaultdict(str)
 
     def backreference(self, chosen_symbols: list[Symbol]):
@@ -234,27 +233,25 @@ class Guide:
     def next_terminals_w_states(self):
         return self._next_terminals_w_states
 
-    def set_token_graphs(self, token_graphs: list[TokenGraph]):
-        if isinstance(token_graphs, list) and all(
-            isinstance(x, TokenGraph) for x in token_graphs
-        ):
-            self._token_graphs = token_graphs
+    def set_assembler(self, assembly_graph: AssemblyGraph):
+        if isinstance(assembly_graph, AssemblyGraph):
+            self._token_graphs = assembly_graph
         else:
             raise ParsingError(
-                "Incorrect type, `token_graphs` should be of type `list[TokenGraph]`."
+                "Incorrect type, `token_graphs` should be of type `list[AssemblyGraph]`."
             )
 
 
 class CFGGuide:
     _built_cfg_grammar: dict[str, SymbolGraph]
     _next_terminals_w_states: dict[Symbol, CFGGenerationState]
-    _token_graphs: list[TokenGraph]
+    _token_graphs: AssemblyGraph
     _backreferences: dict[str, dict[int, str]]
 
     def __init__(self, cfg_grammar: str):
         self._built_cfg_grammar = build_cfg_grammar_into_symbol_graphs(cfg_grammar)
         self._next_terminals_w_states = {}
-        self._token_graphs = []
+        self._token_graphs = AssemblyGraph(initials=[], tree={}, finals=[])
         self._backreferences = defaultdict(lambda: defaultdict(str))
 
     def backreference(
@@ -333,7 +330,7 @@ class CFGGuide:
         if isinstance(chosen_symbols, Symbol):
             chosen_symbols = [chosen_symbols]
 
-        if isinstance(chosen_states, Deque) and all(
+        if isinstance(chosen_states, StateDeque) and all(
             isinstance(x, CFGStatefulGraph) for x in chosen_states
         ):
             chosen_states = [chosen_states]
@@ -483,14 +480,12 @@ class CFGGuide:
     def next_terminals_w_states(self):
         return self._next_terminals_w_states
 
-    def set_token_graphs(self, token_graphs: list[TokenGraph]):
-        if isinstance(token_graphs, list) and all(
-            isinstance(x, TokenGraph) for x in token_graphs
-        ):
-            self._token_graphs = token_graphs
+    def set_assembler(self, assembly_graph: AssemblyGraph):
+        if isinstance(assembly_graph, AssemblyGraph):
+            self._token_graphs = assembly_graph
         else:
             raise ParsingError(
-                "Incorrect type, `token_graphs` should be of type `list[TokenGraph]`."
+                "Incorrect type, `token_graph` should be of type `AssemblyGraph`."
             )
 
     def copy(self):
@@ -499,5 +494,5 @@ class CFGGuide:
         new_instance._built_cfg_grammar = self._built_cfg_grammar
         new_instance._next_terminals_w_states = {}
         new_instance._backreferences = {}
-        new_instance._token_graphs = []
+        new_instance._token_graphs = AssemblyGraph(initials=[], tree={}, finals=[])
         return new_instance
