@@ -1,6 +1,8 @@
 import pytest
 
 from lextrail.guide import Guide
+from lextrail.build.passes import _split_symbols, _adjust_regex_backreferences
+from lextrail.helpers import _extract_backreference_indices
 
 
 @pytest.fixture
@@ -388,3 +390,80 @@ def test_def_with_or_with_nesting_once_none(
         }.items()
         if v != ""
     }
+
+
+"""
+    Tests for `_adjust_regex_backreferences`.
+"""
+
+
+@pytest.fixture
+def def_single_regex_after_single_capturing_groups_single_digits():
+    return """ "(" expression {(factor "-") | {/([0-9]*.[0-9]*) \\1/ factor | "+" expression}} ")" """
+
+
+def test_adjust_regex_backreferences_def_single_regex_after_single_capturing_groups_single_digits(
+    def_single_regex_after_single_capturing_groups_single_digits,
+):
+    symbols = _split_symbols(
+        def_single_regex_after_single_capturing_groups_single_digits
+    )
+
+    _adjust_regex_backreferences(symbols)
+
+    indices = _extract_backreference_indices(symbols)
+
+    assert indices == [5]
+
+
+@pytest.fixture
+def def_single_regex_after_mult_capturing_groups_single_digits():
+    return """ "(" expression {(factor "-") | {/([0-9]*.[0-9]*) \\1 ([A-Z]?.[a-z]?) \\2/ factor | "+" expression}} ")" """
+
+
+def test_adjust_regex_backreferences_def_single_regex_after_mult_capturing_groups_single_digits(
+    def_single_regex_after_mult_capturing_groups_single_digits,
+):
+    symbols = _split_symbols(def_single_regex_after_mult_capturing_groups_single_digits)
+
+    _adjust_regex_backreferences(symbols)
+
+    indices = _extract_backreference_indices(symbols)
+
+    assert indices == [5, 6]
+
+
+@pytest.fixture
+def def_mult_regex_after_mult_capturing_groups_single_digits():
+    return """ "(" expression {(factor "-") | {/([0-9]*.[0-9]*) \\1 ([A-Z]?.[a-z]?) \\2/ factor | "+" expression}} (expression "+" {factor} /([0-9]*) \\1 ([A-Z]*) \\2/) ")" """
+
+
+def test_adjust_regex_backreferences_def_mult_regex_after_mult_capturing_groups_single_digits(
+    def_mult_regex_after_mult_capturing_groups_single_digits,
+):
+    symbols = _split_symbols(def_mult_regex_after_mult_capturing_groups_single_digits)
+
+    _adjust_regex_backreferences(symbols)
+
+    indices = _extract_backreference_indices(symbols)
+
+    assert indices == [5, 6, 9, 10]
+
+
+@pytest.fixture
+def def_mult_regex_after_mult_capturing_groups_mult_digits():
+    return """ "(" expression {(factor "-") | {/([0-9]*.[0-9]*) \\1 
+    ([A-Z]?.[a-z]?) \\2/ factor | "+" expression}} (expression "+" 
+    {factor} /([0-9]*) \\1 ([A-Z]*) \\2/) ("factor" /([A-Z]*) ([a-z]*) \\1 \\2/) ")" """
+
+
+def test_adjust_regex_backreferences_def_mult_regex_after_mult_capturing_groups_mult_digits(
+    def_mult_regex_after_mult_capturing_groups_mult_digits,
+):
+    symbols = _split_symbols(def_mult_regex_after_mult_capturing_groups_mult_digits)
+
+    _adjust_regex_backreferences(symbols)
+
+    indices = _extract_backreference_indices(symbols)
+
+    assert indices == [5, 6, 9, 10, 12, 13]
