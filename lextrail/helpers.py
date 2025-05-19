@@ -11,7 +11,7 @@ def _is_end_def_symbol(symbol: Symbol) -> bool:
 
 
 def _is_end_def_symbol_in_sequence(
-    sequence: Union[OrderedSet[Symbol], list[Symbol]]
+    sequence: Union[OrderedSet[Symbol], list[Symbol]],
 ) -> bool:
     for symbol in sequence:
         if _is_end_def_symbol(symbol):
@@ -89,7 +89,7 @@ def _fetch_symbol_predecessors_in_tree(
 
 
 def _discard_single_nodes_from_tree(
-    tree: dict[Symbol, OrderedSet[Symbol]]
+    tree: dict[Symbol, OrderedSet[Symbol]],
 ) -> dict[Symbol, OrderedSet[Symbol]]:
     tree_copy = tree.copy()
 
@@ -108,6 +108,22 @@ def _is_escaped(string: str, index: int) -> bool:
         j += 1
         index -= 1
     return j % 2 != 0
+
+
+class LTContext:
+    def __init__(self, **env):
+        self.env = env
+
+    def __enter__(self):
+        self.original = {key: os.getenv(key) for key in self.env}
+        os.environ.update(self.env)
+
+    def __exit__(self, *args):
+        for k, v in self.original.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
 
 
 """
@@ -156,17 +172,34 @@ def _extract_content_from_symbols(symbols: list[Symbol]) -> list[str]:
     return content
 
 
-class LTContext:
-    def __init__(self, **env):
-        self.env = env
+def _extract_backreference_indices(symbols: list[str]) -> list[int]:
+    def _extract_backreference_indices_from_regex(regex: str):
+        indices: list[int] = []
+        index = ""
 
-    def __enter__(self):
-        self.original = {key: os.getenv(key) for key in self.env}
-        os.environ.update(self.env)
+        i = 0
+        while i < len(regex):
+            if (
+                regex[i] == "\\"
+                and not _is_escaped(regex, i - 1)
+                and regex[i + 1].isdigit()
+            ):
+                i += 1
+                while regex[i].isdigit():
+                    index += regex[i]
+                    i += 1
 
-    def __exit__(self, *args):
-        for k, v in self.original.items():
-            if v is None:
-                os.environ.pop(k, None)
-            else:
-                os.environ[k] = v
+                indices.append(int(index))
+                index = ""
+
+            i += 1
+
+        return indices
+
+    indices: list[int] = []
+
+    for symbol in symbols:
+        if symbol.startswith("/") and symbol.endswith("/"):
+            indices.extend(_extract_backreference_indices_from_regex(symbol))
+
+    return indices

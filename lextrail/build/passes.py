@@ -1,6 +1,6 @@
 import re
 import warnings
-from collections import deque
+from collections import defaultdict, deque
 from os import getenv
 from typing import Deque
 
@@ -337,45 +337,67 @@ def _adjust_regex_delimiters(symbols: list[str]):
 
 
 def _adjust_regex_backreferences(symbols: list[str]):
-    backref_details: list[tuple[int, int, int, int]] = []
-    bracket_count = 0
+    backref_details: dict[int, list[tuple[int, int, int]]] = defaultdict(list)
+
+    # Open brackets counts.
+    open_bracket_count = 0
+    open_bracket_count_regex = 0
 
     for i, item in enumerate(symbols):
         # Count opening brackets before finding regex patterns.
         if item in ["(", "[", "{", "<"]:
-            bracket_count += 1
+            open_bracket_count += 1
             continue
 
         if item.startswith("/") and item.endswith("/"):
-            # Remove the enclosing slashes to get the regex pattern.
-            pattern = item[1:-1]
+            # Add open brackets from the previous regex symbol.
+            open_bracket_count += open_bracket_count_regex
 
-            # Find positions of backreferences.
+            # Clear the old count from the previous regex symbol.
+            open_bracket_count_regex = 0
+
             j = 0
-            while j < len(pattern):
+            while j < len(item):
+                # Increment the overall count inside the regex item.
+                if item[j] == "(" and not _is_escaped(item, j - 1):
+                    open_bracket_count_regex += 1
+
                 # Look for a backslash.
-                if pattern[j] == "\\":
-                    # If it's not escaped (not preceeded by another backslash).
-                    if not _is_escaped(pattern, j - 1):
-                        # Check if next char is a digit.
-                        start_pos = j
+                if (
+                    item[j] == "\\"
+                    and not _is_escaped(item, j - 1)
+                    and (j + 1) < len(item)
+                    and item[j + 1].isdigit()
+                ):
+                    j += 1
+                    # Get to the character digit.
+                    start_pos = j
+                    # Collect all consecutive digits to get the full backreference.
+                    while j < len(item) and item[j].isdigit():
                         j += 1
-                        # Collect all consecutive digits to get the full backreference.
-                        while j < len(pattern) and pattern[j].isdigit():
-                            j += 1
-                        # Only add if we found at least one digit. Probably useless CF.
-                        if j > start_pos + 1:
-                            backref_details.append((i, start_pos + 1, j, bracket_count))
-                            continue
+                    backref_details[i].append((start_pos, j, open_bracket_count))
+                    continue
+
                 j += 1
 
-    for order, start, end, offset in backref_details:
-        current_symbol = symbols[order]
-        # Add the offset since backreference are applied not only to REGEX, but the whole expression containing both TERMINAL and REGEX symbols.
-        reference = int(current_symbol[start + 1 : end + 1]) + offset
-        symbols[order] = (
-            current_symbol[: start + 1] + f"{reference+1}" + symbols[order][end + 1 :]
-        )
+    for index, details in backref_details.items():
+        current_symbol = symbols[index]
+        shift = 0
+
+        for start, end, offset in details:
+            # Add the offset since backreference are applied not only to REGEX,
+            # but the whole expression containing both TERMINAL and REGEX symbols.
+            reference = int(current_symbol[start:end]) + offset
+
+            symbols[index] = (
+                symbols[index][: start + shift]
+                + f"{reference+1}"
+                + symbols[index][end + shift :]
+            )
+
+            # If a reference is replaced with a number with more digits, then
+            # such difference needs to be accounted in the next replacement.
+            shift = len(str(reference + 1)) - len(current_symbol[start:end])
 
 
 def _split_terminals_into_chars(symbols: list[str]) -> list[str]:
