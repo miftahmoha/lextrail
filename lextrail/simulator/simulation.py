@@ -4,11 +4,12 @@ import threading
 import time
 from copy import deepcopy
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from typing import Any
+from typing import Any, KeysView
+import re
 
 from lextrail.base import CFGStatefulGraph, Symbol, SymbolGraph
 from lextrail.guide import CFGGenerationState, CFGGuide
-from lextrail.helpers import _get_symbols_from_generated_symbol_graph
+from lextrail.helpers import LTContext, _get_symbols_from_generated_symbol_graph
 from lextrail.utils.simulate import MockLLM, _get_partial_guided_response
 
 VizGraph = dict[str, list[dict[str, str]]]
@@ -18,15 +19,16 @@ VizUpdate = dict[str, Any]
 DEFAULT_STATE = {
     "updates": [],
     "rollbacks": [],
+    "previews": [],
     "response": [],
-    "is_complete": False,
+    "completed": False,
 }
 
 DEFAULT_SETTINGS = {
     "paused": False,
     "interrupted": False,
     "reset": False,
-    "speed": 0.5,  # Default 500ms delay.
+    "speed": 1,  # Default 1000ms delay.
 }
 
 
@@ -44,7 +46,6 @@ def _symbol_graph_to_vis_network(
                 "id": str(symbol.s_id),
                 "label": symbol.content,
                 "color": "lightblue",
-                # "size": 10,
             }
         )
 
@@ -57,9 +58,19 @@ def _symbol_graph_to_vis_network(
     return {"nodes": nodes, "edges": edges}
 
 
+def _extract_preview(next_symbols: KeysView[Symbol]) -> list[str]:
+    preview_ids: list[str] = []
+
+    for next_symbol in next_symbols:
+        preview_ids.append(str(next_symbol.s_id))
+
+    return preview_ids
+
+
 def _extract_update(
     *, prev_states: list[CFGStatefulGraph], curr_states: list[CFGStatefulGraph]
 ) -> VizUpdate:
+    # [TODO] Change the dict[str, str] to {"to": ..., "from": ...}.
     movu: dict[int, dict[str, str]] = {}
     addu: dict[int, VizGraph] = {}
     delu: dict[int, VizGraph] = {}
@@ -172,7 +183,7 @@ class Simulate:
 
             if not chosen_states:
                 print("Simulation is complete, no more states to process.")
-                self.state["is_complete"] = True
+                self.state["completed"] = True
                 # Run proceeds in case of a reset.
                 while not self.settings["reset"]:
                     time.sleep(0.1)
@@ -182,10 +193,13 @@ class Simulate:
                 for n, cfg_stateful_graph in enumerate(set(cfg_stateful_graphs)):
                     curr_states.append(cfg_stateful_graph)
 
+            _next_preview = _extract_preview(self.guide.next_terminals_w_states.keys())
+
             _next_update = _extract_update(
                 prev_states=prev_states, curr_states=curr_states
             )
 
+            self.state["previews"].append(_next_preview)
             self.state["updates"].append(_next_update)
             self.state["rollbacks"].append(_to_rollback(_next_update))
 
@@ -214,12 +228,8 @@ class Server(BaseHTTPRequestHandler):
             self.send_header("Content-type", "application/json")
             self.end_headers()
             response_data = {
-                "updates": self.simulate.state["updates"],
-                "rollbacks": self.simulate.state["rollbacks"],
-                "_response": self.simulate.state["response"],
-                "_is_simulation_complete": self.simulate.state["is_complete"],
-                "_is_paused": self.simulate.settings["paused"],
-                "_is_interrupted": self.simulate.settings["interrupted"],
+                "data": self.simulate.state,
+                "setting": self.simulate.settings,
             }
             self.wfile.write(json.dumps(response_data).encode())
 
@@ -231,10 +241,6 @@ class Server(BaseHTTPRequestHandler):
             # Handle the control commands.
             if "action" in data:
                 if data["action"] == "pause":
-                    self.simulate.settings["paused"] = True
-                elif data["action"] == "resume":
-                    self.simulate.settings["paused"] = False
-                elif data["action"] == "toggle_pause":
                     self.simulate.settings["paused"] = not self.simulate.settings[
                         "paused"
                     ]
@@ -245,7 +251,7 @@ class Server(BaseHTTPRequestHandler):
                     self.simulate.settings["interrupted"] = False
                     self.simulate.settings["paused"] = False
                     self.simulate.settings["reset"] = True
-                elif data["action"] == "set_speed":
+                elif data["action"] == "delay":
                     if "rate" in data and isinstance(data["rate"], (int, float)):
                         self.simulate.settings["speed"] = data["rate"]
             # Send response.
@@ -260,10 +266,13 @@ class Server(BaseHTTPRequestHandler):
 
     def get_html_content(self: "Server") -> str:
         contents: list[str] = []
+
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        for filename in ["index.html", "style.css", "script.js"]:
-            with open(os.path.join(current_dir, filename)) as f:
+
+        for filename in ["index.html", "style.css", "bundle.js"]:
+            with open(os.path.join(current_dir, f"dist/{filename}")) as f:
                 contents.append(f.read())
+
         return f"""
         <!DOCTYPE html>
         <html>
@@ -297,4 +306,5 @@ if __name__ == "__main__":
     factor: NUMBER
     NUMBER: /[0-1]\.[0-1]/
     """
-    Simulate(cfg_grammar=cfg_grammar).run()
+    with LTContext(SPLIT_CHARS="1", PARSE_REGEX="1"):
+        Simulate(cfg_grammar=cfg_grammar).run()
