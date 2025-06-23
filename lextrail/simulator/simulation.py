@@ -4,11 +4,11 @@ import threading
 import time
 from copy import deepcopy
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from typing import Any, KeysView
+from typing import Any, KeysView, overload
 import re
 
 from lextrail.base import CFGStatefulGraph, Symbol, SymbolGraph
-from lextrail.guide import CFGGenerationState, CFGGuide
+from lextrail.guide import Guide, CFGStatefulGraph, CFGGenerationState, CFGGuide
 from lextrail.helpers import LTContext, _get_symbols_from_generated_symbol_graph
 from lextrail.utils.simulate import MockLLM, _get_partial_guided_response
 
@@ -89,6 +89,11 @@ def _extract_update(
                 addu[i] = _symbol_graph_to_vis_network(curr_states[i].graph)
                 assert curr.state is not None, f"Invalid state for {curr}."
                 movu[i] = {"": str(curr.state.s_id)}
+        else:
+            assert (
+                prev.state is not None and curr.state is not None
+            ), f"Invalid states for either {prev} or {curr}."
+            movu[i] = {str(prev.state.s_id): str(curr.state.s_id)}
 
     # Handle deletions (prev longer than curr).
     if len(prev_states) > len(curr_states):
@@ -123,12 +128,17 @@ def _to_rollback(vizupdate: VizUpdate) -> VizUpdate:
 
 
 class Simulate:
-    guide: CFGGuide  # [TODO] Add support for Guide.
     state: dict[str, Any]
     settings: dict[str, Any]
 
-    def __init__(self, cfg_grammar: str):
-        self.guide = CFGGuide(cfg_grammar)
+    @overload
+    def __init__(self: "Simulate", guide: Guide) -> None: ...
+
+    @overload
+    def __init__(self: "Simulate", guide: CFGGuide) -> None: ...
+
+    def __init__(self, guide) -> None:
+        self.guide = guide
         self.state = deepcopy(DEFAULT_STATE)
         self.settings = deepcopy(DEFAULT_SETTINGS)
 
@@ -147,7 +157,7 @@ class Simulate:
     def get_next_state(self):
         mock_llm = MockLLM()
         chosen_symbols: list[Symbol] = []
-        chosen_states: list[CFGGenerationState] = []
+        chosen_states = []
 
         prev_states = []
         while True:
@@ -189,8 +199,12 @@ class Simulate:
                     time.sleep(0.1)
                 continue
 
-            for m, cfg_stateful_graphs in enumerate(list(zip(*chosen_states))):
-                for n, cfg_stateful_graph in enumerate(set(cfg_stateful_graphs)):
+            if isinstance(self.guide, CFGGuide):
+                for m, cfg_stateful_graphs in enumerate(list(zip(*chosen_states))):
+                    for n, cfg_stateful_graph in enumerate(set(cfg_stateful_graphs)):
+                        curr_states.append(cfg_stateful_graph)
+            else:
+                for m, cfg_stateful_graph in enumerate(chosen_states):
                     curr_states.append(cfg_stateful_graph)
 
             _next_preview = _extract_preview(self.guide.next_terminals_w_states.keys())
@@ -269,8 +283,8 @@ class Server(BaseHTTPRequestHandler):
 
         current_dir = os.path.dirname(os.path.abspath(__file__))
 
-        for filename in ["index.html", "style.css", "bundle.js"]:
-            with open(os.path.join(current_dir, f"dist/{filename}")) as f:
+        for filename in ["index.html", "style.css", "script.js"]:
+            with open(os.path.join(current_dir, f"build/{filename}")) as f:
                 contents.append(f.read())
 
         return f"""
@@ -306,5 +320,7 @@ if __name__ == "__main__":
     factor: NUMBER
     NUMBER: /[0-1]\.[0-1]/
     """
+    cfgguide_ = CFGGuide(cfg_grammar)
+    guide_ = Guide('"term" "ambiguity_1"* "ambiguity" "finish"')
     with LTContext(SPLIT_CHARS="1", PARSE_REGEX="1"):
-        Simulate(cfg_grammar=cfg_grammar).run()
+        Simulate(guide_).run()

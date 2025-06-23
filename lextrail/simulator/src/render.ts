@@ -1,7 +1,7 @@
 import { VisNet, LTId, LTEdge, LTGraph, LTUpdate, LTData, LTNetwork, LTState, Network } from './types'
 import { getRequiredElement } from './helpers';
 import { DOM } from './interface'
-import { Options } from "vis-network/standalone";
+import { Options } from "vis";
 
 const VIS_MAIN_OPTIONS: Options = {
     nodes: {
@@ -132,7 +132,7 @@ function moveHighlight(network: Network, fromId: string, toId: string): void {
     });
 
     // Reset `fromNode` to default color if it exists.
-    if (fromNode) {
+    if (fromId !== toId && fromNode) {
         nodes.update({
             id: fromId,
             color: {

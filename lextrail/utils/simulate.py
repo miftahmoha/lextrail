@@ -1,4 +1,5 @@
 import random
+from typing import overload
 from dataclasses import dataclass, field
 
 import matplotlib.pyplot as plt
@@ -6,7 +7,7 @@ from matplotlib.animation import FuncAnimation
 from matplotlib.widgets import TextBox
 
 from lextrail.base import Symbol
-from lextrail.guide import CFGGenerationState, CFGGuide
+from lextrail.guide import Guide, CFGStatefulGraph, CFGGenerationState, CFGGuide
 from lextrail.utils.draw import _setup_symbol_graph_networkx
 
 
@@ -20,7 +21,7 @@ class MockLLM:
             self.response.append("")
             return [choice]
         self.response.append(choice.content[1:-1])
-        return [choice]
+        return [symbol for symbol in choices if symbol.content == choice.content]
 
 
 def _get_full_guided_response(mcfg_guide: CFGGuide) -> str:
@@ -48,10 +49,28 @@ def _get_full_guided_response(mcfg_guide: CFGGuide) -> str:
     return "".join(LLM.response)
 
 
+@overload
+def _get_partial_guided_response(
+    cfg_guide_obj: Guide,
+    chosen_symbols,
+    chosen_states: list[CFGStatefulGraph],
+    mock_llm,
+) -> tuple[list[Symbol], list[CFGStatefulGraph]]: ...
+
+
+@overload
 def _get_partial_guided_response(
     cfg_guide_obj: CFGGuide,
-    chosen_symbols: list[Symbol],
+    chosen_symbols,
     chosen_states: list[CFGGenerationState],
+    mock_llm,
+) -> tuple[list[Symbol], list[CFGGenerationState]]: ...
+
+
+def _get_partial_guided_response(
+    cfg_guide_obj,
+    chosen_symbols: list[Symbol],
+    chosen_states,
     mock_llm: "MockLLM",
 ):
     cfg_guide_obj.get_next_terminals(chosen_symbols, chosen_states)

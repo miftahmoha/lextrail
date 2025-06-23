@@ -3,11 +3,8 @@ import { updateControlButtons } from './helpers';
 import { DOM, addEventListeners } from './interface';
 import { updateFrame, updateGraphs } from './render';
 
-
-
-
-async function loadGraphs(network: LTNetwork, state: LTState): Promise<null | undefined> {
-    if (!state.fetch) return null;
+async function loadGraphs(network: LTNetwork, state: LTState): Promise<void> {
+    if (!state.fetch) null;
 
     try {
         const response = await fetch("/graph");
@@ -19,12 +16,14 @@ async function loadGraphs(network: LTNetwork, state: LTState): Promise<null | un
             await updateFrame(DOM, network, state, content.data);
 
             // [NOTE] Deepcopies are known to be very expensive.
-            state.response.data = structuredClone(content.data);
+            state.response.data = content.data;
         }
 
         const isPaused = content.setting.paused;
         const isInterrupted = content.setting.interrupted;
         const isComplete = state.response.data.completed;
+
+        console.log(isComplete);
 
         const total = content.data.updates.length;
 

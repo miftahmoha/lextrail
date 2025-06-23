@@ -2,10 +2,13 @@ const path = require('path');
 
 module.exports = {
     mode: 'production',
+    externals: {
+        'vis': 'vis',
+    },
     entry: './src/simulate.ts',
     output: {
-        path: path.resolve(__dirname, 'dist'),
-        filename: 'bundle.js',
+        path: path.resolve(__dirname, 'compiled'),
+        filename: 'script.js',
         clean: true,
     },
     resolve: {

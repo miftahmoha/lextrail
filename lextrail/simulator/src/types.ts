@@ -1,4 +1,4 @@
-import { Network } from "vis-network/standalone";
+import { Network } from "vis";
 
 export { Network };
 
