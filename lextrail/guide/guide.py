@@ -126,7 +126,7 @@ class Guide:
             raise ParsingError("Symbols must be of type TERMINAL or REGEX.")
 
         # Content of the symbols must be the same.
-        if not all(x == chosen_symbols[0] for x in chosen_symbols):
+        if not all(x.content == chosen_symbols[0].content for x in chosen_symbols):
             raise ParsingError("Ambiguous symbols must have identical content.")
 
         if not chosen_states:
