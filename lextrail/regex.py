@@ -1,99 +1,6 @@
-r"""
-Certainly! Regular expressions (regex) have a variety of constructs that allow for powerful pattern matching. Here’s a comprehensive list of common regex constructs, including those you mentioned like `[]`, `{}`, and others:
-
-### Basic Constructs
-
-1. **Literal Characters:**
-   - `a`, `b`, `c`, ...: Matches the exact character.
-
-2. **Special Characters:**
-   - `.`: Matches any single character except newline.
-   - `\`: Escapes a special character, e.g., `\.` matches a literal period.
-
-### Character Classes
-
-3. **Character Sets (`[]`):**
-   - `[abc]`: Matches any one of the characters `a`, `b`, or `c`.
-   - `[^abc]`: Matches any character except `a`, `b`, or `c`.
-   - `[a-z]`: Matches any lowercase letter from `a` to `z`.
-   - `[A-Z]`: Matches any uppercase letter from `A` to `Z`.
-   - `[0-9]`: Matches any digit from `0` to `9`.
-   - `[a-zA-Z0-9]`: Matches any alphanumeric character.
-
-4. **Predefined Character Classes:**
-   - `\d`: Matches any digit (equivalent to `[0-9]`).
-   - `\D`: Matches any non-digit (equivalent to `[^0-9]`).
-   - `\w`: Matches any word character (alphanumeric + underscore, equivalent to `[a-zA-Z0-9_]`).
-   - `\W`: Matches any non-word character (equivalent to `[^a-zA-Z0-9_]`).
-   - `\s`: Matches any whitespace character (spaces, tabs, newlines).
-   - `\S`: Matches any non-whitespace character.
-
-### Quantifiers
-
-5. **Quantifiers (`{}`):**
-   - `a{3}`: Matches exactly 3 occurrences of `a`.
-   - `a{2,4}`: Matches between 2 and 4 occurrences of `a`.
-   - `a{2,}`: Matches 2 or more occurrences of `a`.
-
-6. **Shorthand Quantifiers:**
-   - `a?`: Matches 0 or 1 occurrence of `a` (optional).
-   - `a+`: Matches 1 or more occurrences of `a`.
-   - `a*`: Matches 0 or more occurrences of `a`.
-
-### Grouping and Alternation
-
-7. **Grouping (`()`):**
-   - `(abc)`: Groups `a`, `b`, and `c` together.
-   - `(a|b)`: Matches either `a` or `b`.
-
-8. **Alternation (`|`):**
-   - `a|b`: Matches either `a` or `b`.
-
-### Anchors
-
-9. **Anchors:**
-   - `^`: Matches the start of a line.
-   - `$`: Matches the end of a line.
-   - `\b`: Matches a word boundary.
-   - `\B`: Matches a non-word boundary.
-
-### Lookahead and Lookbehind
-
-10. **Lookahead and Lookbehind:**
-    - `(?=...)`: Positive lookahead.
-    - `(?!...)`: Negative lookahead.
-    - `(?<=...)`: Positive lookbehind.
-    - `(?<!...)`: Negative lookbehind.
-
-### Escaping Special Characters
-
-11. **Escaping Special Characters:**
-    - `\.`, `\*`, `\+`, `\?`, `\^`, `\$`, `\[`, `\]`, `\{`, `\}`, `\|`, `\(`, `\)`: Matches the literal character.
-
-### Examples
-
-- `a[bc]+`: Matches `a` followed by one or more of `b` or `c`.
-- `\d{3}-\d{2}-\d{4}`: Matches a Social Security Number format (e.g., `123-45-6789`).
-- `(abc|def)`: Matches either `abc` or `def`.
-- `^\d+`: Matches one or more digits at the start of a line.
-- `\w+@\w+\.\w+`: Matches a simple email format (e.g., `user@domain.com`).
-
-### Implementation Considerations
-
-When implementing a regex to FSM converter, you need to handle these constructs appropriately. Here’s a brief outline of how to handle some of these constructs:
-
-- **Character Sets (`[]`):** Create transitions for each character in the set.
-- **Quantifiers (`{}`):** Use loops or recursive structures to handle the specified number of repetitions.
-- **Grouping (`()`):** Treat the grouped expression as a sub-NFA and integrate it into the main NFA.
-- **Alternation (`|`):** Create parallel paths in the NFA.
-- **Anchors (`^`, `$`):** Ensure the NFA starts or ends at the appropriate positions.
-- **Lookahead/Lookbehind:** These can be more complex and may require additional states or transitions.
-
-By understanding and implementing these constructs, you can build a robust regex to FSM converter.
-"""
-
 import math
 import string
+import warnings
 from enum import Enum
 from typing import Optional
 
@@ -169,6 +76,7 @@ def _is_valid_quantifier(content: str):
 
 # [NOTE] Can use `re` package to validate the regex.
 # No need to check for parenthesis coherence and syntactic correctness.
+# [NOTE] Whenever forward accessing `i + x`, need to make sure that there is data.
 # [NOTE] Special characters inside `[]` are automatically escaped (apart from `[]` itself), nesting with `()` or `[]` is not allowed.
 # [ALERT] Adding another `[]` inside `[]` results in UNDEFINED BEHAVIOR, thus it must be ESCAPED by the USER. Unfortunately, `re` package will not help. A warning should be emitted.
 # [NOTE] Could remove the CF `if current:` through removing empty strings in a following pass.
@@ -205,8 +113,7 @@ def _regex_split_pass(regex_str: str) -> list[str]:
                 current_delimiter = delimiter_mapping.get(current_character)
                 i += 3
                 continue
-            # [TODO] Whenever forward accessing `i + x`, need to make sure that there is data.
-            # [NOT SUPPORTED] Send exception for lookarounds.
+            # Send exception for lookarounds.
             if (
                 current_character == "("
                 and current_delimiter != DelimiterType.BRACKETS
@@ -221,7 +128,7 @@ def _regex_split_pass(regex_str: str) -> list[str]:
                     )
                 )
             ):
-                raise InvalidRegex("Lookarounds are not supported yet.")
+                raise InvalidRegex("Lookarounds are not allowed.")
             # Leaving the scope.
             if current_character in ")]}":
                 current_delimiter = None
@@ -235,7 +142,7 @@ def _regex_split_pass(regex_str: str) -> list[str]:
                 current.clear()
             result.append(current_character)
 
-        # [NOT SUPPORTED] Send exception for backreferences.
+        # Backreferences.
         elif current_character.isdigit() and _is_escaped(regex_str, i - 1):
             result.append("".join(current))
             current.clear()
@@ -253,7 +160,6 @@ def _regex_split_pass(regex_str: str) -> list[str]:
             current.clear()
             i += j
             continue
-            # raise InvalidRegex("Backreferences are not supported yet.")
 
         # [NOT SUPPORTED] Send exception for unicode characters.
         elif current_character == "u" and _is_escaped(regex_str, i - 1):
@@ -376,9 +282,8 @@ def _regex_split_pass(regex_str: str) -> list[str]:
                 current.clear()
             result.append(current_character)
 
-        # [???] Dealing with anchors, they're irrelevant in our context. CFGs are expected to have deterministic properties.
-        # [???] If user asks for a `regex("example")` in a CFG, it is equivalent
-        # to regex("^example$").
+        # Dealing with anchors, they're irrelevant in our context.
+        # CFGs are expected to have deterministic properties, they'll be ignored.
         elif current_character in "^" and current_delimiter == DelimiterType.BRACKETS:
             if regex_str[i - 1] == "[" and not _is_escaped(regex_str, i - 2):
                 assert len(current) == 0, "`current` should be empty."
@@ -387,6 +292,9 @@ def _regex_split_pass(regex_str: str) -> list[str]:
                 current.append("\\" + current_character)  # Needs to be escaped.
 
         elif current_character in "^$" and not _is_escaped(regex_str, i - 1):
+            warnings.warn(
+                f"There are anchors in <<{regex_str[i-3:i+3]}>>, they'll be ignored."
+            )
             i += 1
             continue
 
