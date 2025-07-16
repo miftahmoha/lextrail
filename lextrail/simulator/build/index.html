@@ -17,7 +17,18 @@
             <div class="pulsing-dot"></div>
         </div>
         <p>Select a subgraph to visualize</p>
+        <div class="sidebar-navigation">
+            <button id="sidebar-prev-btn" class="fas fa-chevron-left"></i></button>
+            <div class="sidebar-indicator" id="indicator">
+                <div class="indicator-dot active"> </div>
+                <div class="indicator-dot"> </div>
+                <div class="indicator-dot"> </div>
+                <div class="indicator-dot"> </div>
+            </div>
+            <button id="sidebar-next-btn" class="fas fa-chevron-right"></i></button>
+        </div>
         <div id="sidebar-items"></div>
+        <!-- Adding to thing accordingly each side-items-x to highlight following the buttons (remove the previous from sidebar), side-items-1 is the default. -->
     </div>
     
     <div class="main-content">
@@ -43,7 +54,9 @@
                 <button id="btn-delay"><i class="fas fa-check"></i></button>
             </div>
         </div>
-        <div class="graph-container" id="current-graph"></div>
+        <!-- [TODO] Merge graph-container with current-graph-container. -->
+        <div class="graph-container current-graph-container" id="current-graph">
+        </div>
         <textarea class="llm-response" id="llm-response" readonly>Waiting for LLM response...</textarea>
     </div>
 </body>

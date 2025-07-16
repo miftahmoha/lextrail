@@ -44,6 +44,14 @@
 }
 
 /* Light mode: Sidebar. */
+:root.light-mode .indicator-dot {
+    background: rgba(0, 0, 0, 0.1);
+}
+
+:root.light-mode .indicator-dot.active {
+    background: rgba(0, 0, 0, 0.4);
+}
+
 :root.light-mode .sidebar {
     background: radial-gradient(circle at top right, var(--sidebar-color), var(--bg-color));
     border-right: 1px solid rgba(0, 0, 0, 0.1);
@@ -130,6 +138,47 @@ body {
     display: flex;
     overflow: hidden;
 }
+
+/* Dark mode: Sidebar Navigation. */
+.sidebar-navigation {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0px;
+}
+
+.sidebar-navigation button {
+    width: 45px;
+    height: 45px;
+    border: none;
+    background-color: transparent;
+    color: var(--text-color);
+    cursor: pointer;
+}
+
+.sidebar-navigation button:hover {
+    color: var(--accent-color);
+}
+
+.sidebar-indicator {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.indicator-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+    transition: all 0.3s ease;
+}
+
+.indicator-dot.active {
+    background: rgba(255, 255, 255, 0.4);
+    transform: scale(1.3);
+}
+
 
 /* Dark mode: Sidebar. */
 .sidebar {
@@ -237,6 +286,18 @@ h1 {
     box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
     position: relative;
     flex-shrink: 0;
+}
+
+.current-graph-container {
+    display: flex;
+    flex-direction: row;
+    height: 100%;
+}
+
+.current-subgraph-container {
+    flex: 1;
+    min-height: 0;
+    border: 1px solid #ccc;
 }
 
 .llm-response {

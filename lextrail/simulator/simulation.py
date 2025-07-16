@@ -1,13 +1,14 @@
+from csv import Error
 import json
 import os
 import threading
 import time
 from copy import deepcopy
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from typing import Any, KeysView, overload
+from typing import Any, KeysView, Sequence, overload
 import re
 
-from lextrail.base import CFGStatefulGraph, Symbol, SymbolGraph
+from lextrail.base import CFGStatefulGraph, Symbol, SymbolGraph, SymbolType
 from lextrail.guide import Guide, CFGStatefulGraph, CFGGenerationState, CFGGuide
 from lextrail.helpers import LTContext, _get_symbols_from_generated_symbol_graph
 from lextrail.utils.simulate import MockLLM, _get_partial_guided_response
@@ -18,6 +19,7 @@ VizUpdate = dict[str, Any]
 
 DEFAULT_STATE = {
     "updates": [],
+    "updates_v2": [],
     "rollbacks": [],
     "previews": [],
     "response": [],
@@ -70,7 +72,6 @@ def _extract_preview(next_symbols: KeysView[Symbol]) -> list[str]:
 def _extract_update(
     *, prev_states: list[CFGStatefulGraph], curr_states: list[CFGStatefulGraph]
 ) -> VizUpdate:
-    # [TODO] Change the dict[str, str] to {"to": ..., "from": ...}.
     movu: dict[int, dict[str, str]] = {}
     addu: dict[int, VizGraph] = {}
     delu: dict[int, VizGraph] = {}
@@ -83,17 +84,17 @@ def _extract_update(
                 assert (
                     prev.state is not None and curr.state is not None
                 ), f"Invalid states for either {prev} or {curr}."
-                movu[i] = {str(prev.state.s_id): str(curr.state.s_id)}
+                movu[i] = {"from": str(prev.state.s_id), "to": str(curr.state.s_id)}
             else:
                 delu[i] = _symbol_graph_to_vis_network(prev_states[i].graph)
                 addu[i] = _symbol_graph_to_vis_network(curr_states[i].graph)
                 assert curr.state is not None, f"Invalid state for {curr}."
-                movu[i] = {"": str(curr.state.s_id)}
+                movu[i] = {"from": "", "to": str(curr.state.s_id)}
         else:
             assert (
                 prev.state is not None and curr.state is not None
             ), f"Invalid states for either {prev} or {curr}."
-            movu[i] = {str(prev.state.s_id): str(curr.state.s_id)}
+            movu[i] = {"from": str(prev.state.s_id), "to": str(curr.state.s_id)}
 
     # Handle deletions (prev longer than curr).
     if len(prev_states) > len(curr_states):
@@ -101,7 +102,7 @@ def _extract_update(
             prev = prev_states[i]
             delu[i] = _symbol_graph_to_vis_network(prev.graph)
             assert prev.state is not None, f"Invalid state for {prev}."
-            movu[i] = {str(prev.state.s_id): ""}
+            movu[i] = {"from": str(prev.state.s_id), "to": ""}
 
     # Handle additions (curr longer than prev).
     elif len(prev_states) < len(curr_states):
@@ -109,7 +110,7 @@ def _extract_update(
             curr = curr_states[i]
             addu[i] = _symbol_graph_to_vis_network(curr.graph)
             assert curr.state is not None, f"Invalid state for {curr}."
-            movu[i] = {"": str(curr.state.s_id)}
+            movu[i] = {"from": "", "to": str(curr.state.s_id)}
 
     return {"addu": addu, "movu": movu, "delu": delu}
 
@@ -159,7 +160,11 @@ class Simulate:
         chosen_symbols: list[Symbol] = []
         chosen_states = []
 
+        listsavv = []
+        listsavv_2 = []
         prev_states = []
+        prev_symbols = []
+        prev_state_sav = []
         while True:
             curr_states = []
             # Check if the simulation is interrupted.
@@ -186,9 +191,9 @@ class Simulate:
                 mock_llm.response = []
 
             chosen_symbols, chosen_states = _get_partial_guided_response(
-                self.guide, chosen_symbols, chosen_states, mock_llm
+                self.guide, deepcopy(chosen_symbols), deepcopy(chosen_states), mock_llm
             )
-
+            listsavv_2.append(chosen_states)
             self.state["response"] = mock_llm.response
 
             if not chosen_states:
@@ -199,25 +204,93 @@ class Simulate:
                     time.sleep(0.1)
                 continue
 
-            if isinstance(self.guide, CFGGuide):
-                for m, cfg_stateful_graphs in enumerate(list(zip(*chosen_states))):
-                    for n, cfg_stateful_graph in enumerate(set(cfg_stateful_graphs)):
-                        curr_states.append(cfg_stateful_graph)
-            else:
-                for m, cfg_stateful_graph in enumerate(chosen_states):
-                    curr_states.append(cfg_stateful_graph)
+            # if isinstance(self.guide, CFGGuide):
+            #     for m, cfg_stateful_graphs in enumerate(list(zip(*chosen_states))):
+            #         for n, cfg_stateful_graph in enumerate(set(cfg_stateful_graphs)):
+            #             curr_states.append(cfg_stateful_graph)
+            # else:
+            #     for m, cfg_stateful_graph in enumerate(chosen_states):
+            #         curr_states.append(cfg_stateful_graph)
 
             _next_preview = _extract_preview(self.guide.next_terminals_w_states.keys())
 
-            _next_update = _extract_update(
-                prev_states=prev_states, curr_states=curr_states
-            )
+            _next_update = []
+
+            if len(prev_states) > 1:
+                for curr_states in chosen_states:
+                    # When `curr_states` is List[CFGStatefulGraph].
+                    if isinstance(curr_states, CFGStatefulGraph):
+                        curr_states = [curr_states]
+
+                    if prev_states:
+                        for prev_state in prev_states:
+                            if isinstance(prev_state, CFGStatefulGraph):
+                                prev_state = [prev_state]
+
+                            _prev_symbol = curr_states[-1].state.s_metadata["_SRC"]
+                            k = 1
+                            while not _prev_symbol:
+                                _prev_symbol = curr_states[-1 - k].state.s_metadata[
+                                    "_SRC"
+                                ]
+                                k += 1
+
+                                if _prev_symbol is None:
+                                    continue
+
+                                while _prev_symbol.s_type == SymbolType.NON_TERMINAL:
+                                    _prev_symbol = _prev_symbol.s_metatadata["_SRC"]
+
+                                # Regex?
+                                if _prev_symbol.s_type in [
+                                    SymbolType.TERMINAL,
+                                    SymbolType.REFERENCE,
+                                ]:
+                                    if _prev_symbol == prev_state[-1].state:
+                                        prev_state_sav = prev_state
+                                        break
+                                else:
+                                    raise Error("MMMMMMMMMMMMMMMMMM")
+
+                            if _prev_symbol == prev_state[-1].state:
+                                prev_state_sav = prev_state
+                                break
+
+                        if not prev_state_sav:
+                            raise Error("TTTTTTTTTTTTTTTTTTT.")
+
+                        # if curr_states[-1].state.s_metadata["_SRC"] == prev_state[-1].state:
+                        #     prev_state_sav = prev_state
+                        #     break
+
+                    _next_update.append(
+                        _extract_update(
+                            prev_states=prev_state_sav, curr_states=curr_states
+                        )
+                    )
+            else:
+                for curr_states in chosen_states:
+                    if isinstance(curr_states, CFGStatefulGraph):
+                        curr_states = [curr_states]
+
+                    if prev_states:
+                        if isinstance(prev_states[0], CFGStatefulGraph):
+                            prev_state_sav = [prev_states[0]]
+
+                    _next_update.append(
+                        _extract_update(
+                            prev_states=prev_state_sav if prev_states else [],
+                            curr_states=curr_states,
+                        )
+                    )
 
             self.state["previews"].append(_next_preview)
             self.state["updates"].append(_next_update)
-            self.state["rollbacks"].append(_to_rollback(_next_update))
+            # self.state["rollbacks"].append(_to_rollback(_next_update))
 
-            prev_states = curr_states
+            prev_states = chosen_states
+            prev_symbols = chosen_symbols
+            listsavv.append(chosen_states)
 
             # Add delay based on speed setting.
             if self.settings["speed"] > 0:

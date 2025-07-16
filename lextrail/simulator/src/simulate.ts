@@ -1,9 +1,9 @@
-import { LTFetch, LTState, LTNetwork } from './types';
-import { updateControlButtons } from './helpers';
+import { LTFetch, LTState, LTNetwork, LTNetworkA } from './types';
+import { getRequiredElement, updateControlButtons } from './helpers';
 import { DOM, addEventListeners } from './interface';
 import { updateFrame, updateGraphs } from './render';
 
-async function loadGraphs(network: LTNetwork, state: LTState): Promise<void> {
+async function loadGraphs(state: LTState): Promise<void> {
     if (!state.fetch) null;
 
     try {
@@ -13,7 +13,7 @@ async function loadGraphs(network: LTNetwork, state: LTState): Promise<void> {
         const content: LTFetch = await response.json();
 
         if (JSON.stringify(content.data.updates) !== JSON.stringify(state?.response?.data?.updates)) {
-            await updateFrame(DOM, network, state, content.data);
+            updateFrame(DOM, state, content.data);
 
             // [NOTE] Deepcopies are known to be very expensive.
             state.response.data = content.data;
@@ -22,8 +22,6 @@ async function loadGraphs(network: LTNetwork, state: LTState): Promise<void> {
         const isPaused = content.setting.paused;
         const isInterrupted = content.setting.interrupted;
         const isComplete = state.response.data.completed;
-
-        console.log(isComplete);
 
         const total = content.data.updates.length;
 
@@ -41,7 +39,7 @@ async function loadGraphs(network: LTNetwork, state: LTState): Promise<void> {
             }
         }
 
-        loadGraphs(network, state);
+        loadGraphs(state);
     }
     catch (error) {
         console.error("Error loading graphs:", error);
@@ -49,9 +47,10 @@ async function loadGraphs(network: LTNetwork, state: LTState): Promise<void> {
     }
 }
 
-async function main() {
+function main() {
     // Initialize.
-    const network: LTNetwork = { front: null, sides: [] };
+    // const network: LTNetwork = { front: null, sides: [] };
+    // const networks: LTNetworkA = { front: [], sides: [] };
 
     const INITIAL_STATE: LTState = {
         response: {
@@ -68,12 +67,24 @@ async function main() {
                 "reset": false,
                 "delay": 1000,
             }
-        }, frame: 0, delay: 1000, active: null, fetch: true
+        }, interfaces: [], networks: [], frame: 0, delay: 1000, active: [], fetch: true
     };
 
-    addEventListeners(DOM, network, INITIAL_STATE, updateGraphs);
+    // INITIAL_STATE.interfaces.push({
+    //     front: getRequiredElement<HTMLElement>('graph-container_0'),
+    //     sides: getRequiredElement<HTMLElement>('sidebar-items_0'),
+    // })
 
-    await loadGraphs(network, INITIAL_STATE);
+    // INITIAL_STATE.networks.push({
+    //     front: null,
+    //     sides: [],
+    // });
+
+    INITIAL_STATE.active.push([])
+
+    addEventListeners(DOM, INITIAL_STATE.networks, INITIAL_STATE, updateGraphs);
+
+    loadGraphs(INITIAL_STATE);
 }
 
 main();

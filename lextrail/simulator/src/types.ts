@@ -12,6 +12,7 @@ export interface VisBody {
 export interface VisNet extends Network {
     body: VisBody;
 
+    getOptions: () => any;
 }
 
 // Types
@@ -44,8 +45,8 @@ export type LTUpdate = {
 };
 
 export type LTData = {
-    "updates": LTUpdate[],
-    "rollbacks": LTUpdate[],
+    "updates": LTUpdate[][],
+    "rollbacks": LTUpdate[][],
     "previews": LTId[][],
     "response": string[],
     "completed": boolean,
@@ -72,11 +73,23 @@ export type LTState = {
     response: LTFetch,
     frame: number,
     delay: number,
-    active: Optional<HTMLElement>,
     fetch: boolean,
+    interfaces: LTInterface[],
+    networks: LTNetwork[],
+    active: HTMLElement[][],
 }
 
 export type LTNetwork = {
     front: Optional<Network>,
     sides: Network[],
+}
+
+export type LTNetworkA = {
+    front: Network[],
+    sides: Network[][],
+}
+
+export type LTInterface = {
+    front: HTMLElement,
+    sides: HTMLElement,
 }
