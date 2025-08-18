@@ -152,13 +152,13 @@ class CFGStatefulGraph:
         )
 
 
-class StateDeque(deque, Generic[T]):
-    def copy(self) -> "StateDeque[T]":
-        return StateDeque(state.copy() for state in self)
+class LTDeque(deque, Generic[T]):
+    def copy(self) -> "LTDeque[T]":
+        return LTDeque(state.copy() for state in self)
 
     # Ensure other methods (like slicing) also use this behavior.
-    def __copy__(self) -> "StateDeque[T]":
+    def __copy__(self) -> "LTDeque[T]":
         return self.copy()
 
 
-CFGGenerationState = StateDeque[CFGStatefulGraph]
+CFGGenerationState = LTDeque[CFGStatefulGraph]

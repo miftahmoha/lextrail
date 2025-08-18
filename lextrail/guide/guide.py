@@ -6,7 +6,7 @@ from lextrail.assemble import AssemblyGraph, _update_single_token_combinations
 from lextrail.base import (
     CFGGenerationState,
     CFGStatefulGraph,
-    StateDeque,
+    LTDeque,
     Symbol,
     SymbolGraph,
     SymbolType,
@@ -63,6 +63,7 @@ class Guide:
         self._backreferences = defaultdict(str)
 
     def backreference(self, chosen_symbols: list[Symbol]):
+        # [TODO] Add tests for `extract_indices`.
         def extract_indices(start_key, dictionary):
             result = [start_key]
             current_key = start_key
@@ -120,10 +121,11 @@ class Guide:
 
         # Type of the symbols must be TERMINAL, REGEX or END_DEF.
         if not all(
-            x.s_type in [SymbolType.TERMINAL, SymbolType.REGEX] or _is_end_def_symbol(x)
+            x.s_type in [SymbolType.TERMINAL, SymbolType.REGEX, SymbolType.REFERENCE]
+            or _is_end_def_symbol(x)
             for x in chosen_symbols
         ):
-            raise ParsingError("Symbols must be of type TERMINAL or REGEX.")
+            raise ParsingError("Symbols must be of type TERMINAL, REGEX or REFERENCE.")
 
         # Content of the symbols must be the same.
         if not all(x.content == chosen_symbols[0].content for x in chosen_symbols):
@@ -199,9 +201,9 @@ class Guide:
                     self._next_terminals_w_states[next_symbol] = next_chosen_state
 
                 elif next_symbol.s_type == SymbolType.REFERENCE:
-                    # Backreference successors should be unique.
+                    # Backreference predecessors should be unique.
                     if len(next_symbols) > 1:
-                        raise ParsingError("Reference successor is not unique.")
+                        raise ParsingError("Reference predecessor is not unique.")
                     # Retrieve index.
                     index = int(next_symbol.content[1:])
                     # Check if index is valid.
@@ -257,6 +259,7 @@ class CFGGuide:
     def backreference(
         self, chosen_symbols: list[Symbol], chosen_states: list[CFGGenerationState]
     ):
+        # [TODO] Add tests for `extract_indices`.
         def extract_indices(start_key, dictionary):
             result = [start_key]
             current_key = start_key
@@ -320,7 +323,9 @@ class CFGGuide:
                 # self._backreferences[state_label][index] += chosen_symbol.content[1:-1]
                 # Pop backereferences that contain non-terminal symbols.
                 self._backreferences[state_label].pop(index, None)
-
+    
+    # [TODO] At some point the line below was commented, why? 
+    # Commenting the decorator below invalidates some tests in `test_lextrail_assembly.py`.
     @clear_dict_before_call("_next_terminals_w_states")
     def _get_next_terminals(
         self,
@@ -330,7 +335,7 @@ class CFGGuide:
         if isinstance(chosen_symbols, Symbol):
             chosen_symbols = [chosen_symbols]
 
-        if isinstance(chosen_states, StateDeque) and all(
+        if isinstance(chosen_states, LTDeque) and all(
             isinstance(x, CFGStatefulGraph) for x in chosen_states
         ):
             chosen_states = [chosen_states]
@@ -343,7 +348,7 @@ class CFGGuide:
             raise ParsingError("Symbols must be of type TERMINAL or REGEX.")
 
         # Content of the symbols must be the same.
-        if not all(x == chosen_symbols[0] for x in chosen_symbols):
+        if not all(x.content == chosen_symbols[0].content for x in chosen_symbols):
             raise ParsingError("Ambiguous symbols must have identical content.")
 
         if not chosen_states:
@@ -351,7 +356,7 @@ class CFGGuide:
                 # Turning the symbol graph that'll be added to the stack
                 # into a stateful object `CFGStatefulGraph`.
                 start = CFGStatefulGraph(self._built_cfg_grammar["start"], "start")
-                self._get_next_terminals(chosen_states=[StateDeque([start])])
+                self._get_next_terminals(chosen_states=[LTDeque([start])])
                 return
             else:
                 raise ParsingError(
@@ -362,7 +367,7 @@ class CFGGuide:
         last_visit_graphs = [chosen_state[-1].graph for chosen_state in chosen_states]
 
         if chosen_symbols:
-            if int(getenv("PARSE_BREFS", 1)):
+            if int(getenv("PARSE_BREFS", 0)):
                 # Backreference update.
                 self.backreference(chosen_symbols, chosen_states)
             # Update the state for `CFGStatefulGraph` to the terminal(s) symbol(s) chosen by the LLM.
@@ -442,9 +447,9 @@ class CFGGuide:
                     self._get_next_terminals(chosen_states=[next_chosen_state])
 
                 if next_symbol.s_type == SymbolType.REFERENCE:
-                    # Backreference successors should be unique.
+                    # Backreference predecessors should be unique.
                     if len(next_symbols) > 1:
-                        raise ParsingError("Reference successor is not unique.")
+                        raise ParsingError("Reference predecessor is not unique.")
                     # Retrieve index.
                     index = int(next_symbol.content[1:])
                     # Check if index is valid.
@@ -489,7 +494,7 @@ class CFGGuide:
             )
 
     def copy(self):
-        # Create a shallow copy of the CFGGuide instance without recomputing the grammar.
+        # Shallow copy of `CFGGuide` instance without recomputing the grammar.
         new_instance = CFGGuide.__new__(CFGGuide)
         new_instance._built_cfg_grammar = self._built_cfg_grammar
         new_instance._next_terminals_w_states = {}
