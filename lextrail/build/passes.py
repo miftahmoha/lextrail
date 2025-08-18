@@ -1,7 +1,7 @@
 import re
 import warnings
 from collections import defaultdict, deque
-from os import getenv
+import os
 from typing import Deque
 
 from lextrail.base import Symbol, SymbolGraph, SymbolType
@@ -38,6 +38,8 @@ def _build_symbol_from_string(symbol_str: str) -> Symbol:
         node = Symbol(symbol_str, SymbolType.SPECIAL)
 
     elif symbol_str.startswith("\\") and symbol_str[1:].isdigit():
+        # [NOTE] Avoids storing results if there are no backreferences.
+        os.environ["PARSE_BREFS"] = "1"
         node = Symbol(symbol_str, SymbolType.REFERENCE)
 
     else:
@@ -424,10 +426,10 @@ def _convert_str_def_to_str_queue(symbol_def: str) -> Deque[str]:
     # Add the offset since backreference are applied not only to REGEX, but the whole expression containing both TERMINAL and REGEX symbols.
     _adjust_regex_backreferences(symbols)
 
-    if int(getenv("PARSE_REGEX", 1)):
+    if int(os.getenv("PARSE_REGEX", 1)):
         symbols = _parse_regex(symbols)
 
-    if int(getenv("SPLIT_CHARS", 1)):
+    if int(os.getenv("SPLIT_CHARS", 1)):
         symbols = _split_terminals_into_chars(symbols)
 
     # Check for errors.

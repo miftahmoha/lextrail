@@ -75,7 +75,8 @@ def _divide_cfg_grammar_into_rules(grammar: str) -> dict[str, str]:
             divided_cfg_grammar_dict[current_rule_name] += " " + line
 
         else:
-            parts = line.split(":")
+            # [TODO] Get rid of the RegEx for CF.
+            parts = re.split(r"(?<!\"):(?!\")", line)
 
             if len(parts) != 2:
                 # Handles multiple use of ':' in a single definition.
