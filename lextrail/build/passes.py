@@ -38,7 +38,8 @@ def _build_symbol_from_string(symbol_str: str) -> Symbol:
         node = Symbol(symbol_str, SymbolType.SPECIAL)
 
     elif symbol_str.startswith("\\") and symbol_str[1:].isdigit():
-        # [NOTE] Avoids storing results if there are no backreferences.
+        # [NOTE] Avoids storing results if there are no backreferences. It is
+        # executed after parsing RegEx expressions.
         os.environ["PARSE_BREFS"] = "1"
         node = Symbol(symbol_str, SymbolType.REFERENCE)
 
