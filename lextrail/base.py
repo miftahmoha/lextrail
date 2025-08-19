@@ -3,10 +3,11 @@ from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Generic, Iterable, Iterator, Optional, TypeVar
+from copy import deepcopy
 
 T = TypeVar("T")
 
-
+# [TODO] Inspect the need of an ordered set.
 class OrderedSet(Generic[T]):
     def __init__(self, iterable: Iterable[T] = None):  # type: ignore
         self._dict: dict[T, None] = dict.fromkeys(iterable if iterable else [])
@@ -50,7 +51,11 @@ class OrderedSet(Generic[T]):
         return OrderedSet(self._dict.keys() & other._dict.keys())
 
     def copy(self) -> "OrderedSet[T]":
-        return OrderedSet(self._dict.copy())
+        # [TODO] At some point, using deepcopy wasn't needed until metadata being set
+        # of a symbol A was shared with another symbol B within `Guide` at 
+        # '"start" "ambiguous" "ambiguous"* "end"' where "ambiguous"(*) shared the metadata with "end".
+        # Explore the root of the shallow copying in this case.
+        return OrderedSet(deepcopy(self._dict))
 
 
 @dataclass

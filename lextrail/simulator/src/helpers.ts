@@ -1,6 +1,6 @@
-import { VisNet, LTAction, LTNetwork, LTNetworkA } from './types';
-import { DOM } from './interface'
 import { Network, Options } from "vis";
+import { VisNet, LTAction, LTNetwork } from './types';
+import { DOM } from './interface'
 
 export function getRequiredElement<T extends HTMLElement>(id: string): T {
 	const element = document.getElementById(id) as T | null;
@@ -95,16 +95,33 @@ export function sendControlCommand(action: LTAction, extraData: { rate?: number 
 		});
 }
 
-export function cloneNetwork(sourceNetwork: Network, targetContainer: HTMLElement, options: Options): Network {
+export function Counter(arr: number[], maxValue: number = arr.length): Record<number, number> {
+	const counter: Record<number, number> = {};
+
+	for (let i = 0; i <= maxValue; i++) {
+		counter[i] = 0;
+	}
+
+	for (const num of arr) {
+		if (num >= 0 && num <= maxValue) {
+			counter[num]++;
+		}
+	}
+
+	return counter;
+}
+
+export function moveNetwork(sourceNetwork: Network, targetContainer: HTMLElement, options: Options): Network {
+	// `.get()` will make a an independant copy of the network.
 	const graphDataClone = {
 		nodes: (sourceNetwork as VisNet).body.data.nodes.get(),
 		edges: (sourceNetwork as VisNet).body.data.edges.get(),
 	} as any;
 
-	return new Network(targetContainer, structuredClone(graphDataClone), options);
+	return new Network(targetContainer, graphDataClone, options);
 }
 
-export function cloneNetwork_(sourceNetwork: Network, targetContainer: HTMLElement, options: Options): Network {
+export function referNetwork(sourceNetwork: Network, targetContainer: HTMLElement, options: Options): Network {
 	const graphDataClone = {
 		nodes: (sourceNetwork as VisNet).body.data.nodes,
 		edges: (sourceNetwork as VisNet).body.data.edges,
@@ -113,20 +130,13 @@ export function cloneNetwork_(sourceNetwork: Network, targetContainer: HTMLEleme
 	return new Network(targetContainer, graphDataClone, options);
 }
 
-export function cloneContainer(sourceContainer: HTMLElement): HTMLElement {
+export function cloneContainer(sourceContainer: HTMLElement) {
 	const clonedContainer = sourceContainer.cloneNode(true) as HTMLElement;
 
 	function updateElementIds(element: HTMLElement) {
 		if (element.id) {
 			element.id = getNextAvailableId(element.id);
 		}
-
-		// if (element.tagName === 'LABEL' && element.hasAttribute('for')) {
-		// 	const forValue = element.getAttribute('for');
-		// 	if (forValue) {
-		// 		element.setAttribute('for', getNextAvailableId(forValue, indicesToAvoid));
-		// 	}
-		// }
 
 		const children = Array.from(element.children) as HTMLElement[];
 		children.forEach((child: HTMLElement) => {
@@ -135,10 +145,10 @@ export function cloneContainer(sourceContainer: HTMLElement): HTMLElement {
 	}
 
 	function getNextAvailableId(currentId: string): string {
-		// Extract the base name and current number from SOME_NAME#X format
+		// Extract the base name and current number from SOME_NAME_X format.
 		const match = currentId.match(/^(.+)_(\d+)$/);
 		if (!match) {
-			throw new Error(`Element ID "${currentId}" does not follow the required SOME_NAME_X format`);
+			throw new Error(`Element ID "${currentId}" does not follow the required SOME_NAME_X format.`);
 		}
 
 		const baseName = match[1];
@@ -155,4 +165,11 @@ export function cloneContainer(sourceContainer: HTMLElement): HTMLElement {
 
 	updateElementIds(clonedContainer);
 	return clonedContainer;
+}
+
+export async function getRunIndex() {
+	const response = await fetch("/graph");
+	if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+
+	return (await response.json()).setting.run;
 }

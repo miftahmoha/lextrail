@@ -1,9 +1,10 @@
-import { VisNet, LTId, LTEdge, LTGraph, LTUpdate, LTData, LTNetwork, LTState, Network, LTNetworkA, LTInterface, Optional } from './types'
-import { getRequiredElement, cloneContainer, cloneNetwork, cloneNetwork_ } from './helpers';
-import { DOM } from './interface'
 import { Options } from "vis";
+import { Network, VisNet, LTId, LTEdge, LTGraph, LTUpdate, LTData, LTNetwork, LTInterface, LTState, Optional } from './types'
+import { referNetwork, moveNetwork } from './helpers';
+import { DOM } from './interface'
+import { initializeLayout, updateLayout } from './layout'
 
-const VIS_MAIN_OPTIONS: Options = {
+export const VIS_MAIN_OPTIONS = (): Options => ({
     nodes: {
         shape: "dot",
         size: 20,
@@ -35,10 +36,9 @@ const VIS_MAIN_OPTIONS: Options = {
             updateInterval: 25,
         },
     },
-};
+});
 
-
-const VIS_SIDE_OPTIONS: Options = {
+export const VIS_SIDE_OPTIONS: Options = {
     nodes: {
         shape: "dot",
         size: 15,
@@ -63,66 +63,8 @@ const VIS_SIDE_OPTIONS: Options = {
     },
 };
 
-// Displays graphs from the sidebar to the main block.
-// function displayGraph(network: LTNetworkA, index: number, delay: number, section: number) {
-//     const mainContainer = getRequiredElement<HTMLElement>('current-graph')
-
-//     // Allows a vertical layout within the container.
-//     // [TODO] Add it a single time.
-//     mainContainer.classList.add('current-graph-container');
-
-//     // Get the container at the section.
-//     let subContainer = document.getElementById(`graph-container-${section}`) as HTMLElement | null;
-//     if (!subContainer) {
-//         // subContainer = document.createElement('div');
-//         // subContainer.id = `current-subgraph-${section}`
-//         // // [TODO] Needed?
-//         // subContainer.classList.add('current-subgraph-container');
-//         // // Add fade class.
-//         // subContainer.classList.add('graph-fade');
-//         // mainContainer.appendChild(subContainer);
-//         throw Error("Should exist from copying..");
-//     }
-
-//     // Remove the class after animation completes, if it stays, the animation will not
-//     // happen since we're we'll be adding an existant animation class in the next frame.
-//     setTimeout(() => {
-//         subContainer.classList.remove('graph-fade');
-//     }, delay / 2);
-
-//     // Get the network instance at index.
-//     const networkInstance = network.sides[section][index];
-
-//     // Get its nodes and edges then build a clone.
-//     // [TODO] Use a reference and not a copy. 
-//     const graphDataClone = {
-//         nodes: (networkInstance as VisNet).body.data.nodes,
-//         edges: (networkInstance as VisNet).body.data.edges,
-//     } as any;
-
-//     // [NOTE] Check if optimization leads to undefined behavior.
-//     // let networkFront = network.front;
-
-//     // if (network.front[section]) {
-//     //     network.front[section].setData(graphDataClone);
-//     //     network.front[section].setOptions({
-//     //         nodes: {
-//     //             font: {
-//     //                 color: DOM.root.classList.contains('light-mode') ? '#000000' : '#ffffff'
-//     //             }
-//     //         }
-//     //     });
-//     // } else {
-//     network.front[section] = new Network(subContainer, graphDataClone, VIS_MAIN_OPTIONS);
-//     // }
-
-//     const status = getRequiredElement('status');
-//     status.innerHTML = `Displaying Subgraph ${+index + 1} of ${network.sides.length}`;
-// }
-
-
 // Moves the highlight from a node A to a node B.
-async function moveHighlight(network: Network, fromId: string, toId: string): Promise<void> {
+export function moveHighlight(network: Network, fromId: string, toId: string): void {
     // [TODO] Add a check that `fromNode` should be in a highlighted state if not null.
     const nodes = (network as VisNet).body.data.nodes;
     const fromNode = fromId ? nodes.get(fromId) : null;
@@ -163,165 +105,198 @@ async function moveHighlight(network: Network, fromId: string, toId: string): Pr
     }
 }
 
+async function deleteSidebarItem(sidesContainer: HTMLElement, index: number): Promise<void> {
+    const sidebarItem = sidesContainer.children[index] as HTMLElement;
 
-async function handleDeletions(deletions: Record<number, LTGraph>, interface_: LTInterface, network: LTNetwork, delay: number) {
-    // Delete from highest to lowest to avoid index shifts in `network.splice(index, 1)`.
-    const indicesToDelete: number[] = Object.keys(deletions).map(Number).sort((a, b) => b - a);
+    if (!sidebarItem) {
+        throw new Error(`Cannot delete non-existent sidebar item at index ${index}`);
+    }
 
-    // Then 
-    indicesToDelete.forEach(index => {
-        const sidebarItem = interface_.sides.children[index];
-        if (!sidebarItem) {
-            throw Error(`Deleting an inexistant sidebar item at ${index}.`);
-        }
+    // [NOTE] Need to delete the class to be able to trigger the animation in next frames.
+    // [NOTE] Buggy since it doesn't wait for the item removal, 
+    // (1) Add an error when adding an existing sidebar item over an existing one, 
+    // (2) Make the function wait for the animation to end.
+    // sidebarItem.classList.add('sidebar-item-remove');
+    // sidebarItem.addEventListener('animationend', () => {
+    //     sidebarItem.remove();
+    // }, { once: true });
 
-        // [NOTE] Need to delete the class to be able to trigger the animation in next frames.
-        sidebarItem.classList.add('sidebar-item-remove');
-        sidebarItem.addEventListener('animationend', () => {
-            sidebarItem.remove();
-        });
-
-        // [NOTE] No need to reason about `frontDisplay` since it's going to be updated to the last item by `setActiveItems`.
-        const sideNetworks = network.sides;
-
-        const sideNetwork = network.sides[index];
-        if (!sideNetwork) {
-            throw Error(`Deleting an inexistant network at ${index}.`);
-        }
-        else {
-            sideNetwork.destroy();
-            sideNetworks.splice(index, 1);
-        }
-
-        // [NOTE] `sidebar-item-remove` will take care of hiding the object, avoiding to create it again.
-        // interface_.sides.removeChild(sidebarItem);
-    });
+    // Temporary fix.
+    sidebarItem.remove();
 }
 
+// [NOTE] No need to reason about `frontDisplay` since it's going to be updated to the last item by `setActiveItems`.
+async function deleteSideNetwork(sideNetworks: Network[], index: number): Promise<void> {
+    const sideNetwork = sideNetworks[index];
 
-async function handleAdditions(additions: Record<number, LTGraph>, interface_: LTInterface, network: LTNetwork, delay: number) {
-    // [NOTE] `Object.entries` implicitly converts the keys into a string.
-    Object.entries(additions).forEach(([sindex, graphData]) => {
-        const index = parseInt(sindex);
+    if (!sideNetwork) {
+        throw new Error(`Cannot delete non-existent network at index ${index}`);
+    }
 
-        // [TODO] Only pass `interface_.sides` as argument.
-        const sideDisplay = interface_.sides;
+    sideNetwork.destroy();
+    sideNetworks.splice(index, 1);
+}
 
-        // Check if there's an existing item with this index.
-        const sidebarItem = sideDisplay.children[index];
+function handleDeletions(
+    deletions: Record<number, LTGraph>,
+    interface_: LTInterface,
+    network: LTNetwork,
+): void {
+    // Delete from highest to lowest index to avoid array index shifts.
+    const indicesToDelete = Object.keys(deletions)
+        .map(Number)
+        .sort((a, b) => b - a);
 
-        if (sidebarItem) {
-            // [TODO] This class is never added, does it animate through removal? Is it uneccesary? Should it be an `.add`?
-            // [NOTE] Animation will not be triggered with an existant class, removal is necessary since it could have vbe
-            sidebarItem.classList.remove('sidebar-item-remove');
-            sidebarItem.classList.add('sidebar-item-new');
+    for (const index of indicesToDelete) {
+        deleteSidebarItem(interface_.sides, index);
+        deleteSideNetwork(network.sides, index);
+    }
+}
 
-            // `2 * index + 1` since each thumbnail has a division above it containing a header.
-            const thumbnailItem = sidebarItem.children[2 * index + 1] as Optional<HTMLElement>;
-            if (!thumbnailItem) throw Error("Thumbnail item is not found inside sidebar item.")
+function updateSidebarItem(sidebarItem: HTMLElement, index: number, graphData: LTGraph,
+    network: LTNetwork): void {
+    sidebarItem.classList.add('sidebar-item-new');
 
-            // [TODO] Check if copy is necessary.
-            network.sides[index] = new Network(thumbnailItem, structuredClone(graphData), VIS_SIDE_OPTIONS);
-        } else {
-            // [NOTE] Elements of an ambiguous section have a suffix `#NUMBER` which specifies the numbering.
-            // [NOTE] When the interface is cloned, a check is run on the elements to ensure the right format.
-            const number = parseInt(sideDisplay.id.split('_')[1]);
+    // `2 * index + 1` since each thumbnail is precedeed by a header.
+    const thumbnailItem = sidebarItem.children[1] as Optional<HTMLElement>;
+    if (!thumbnailItem) {
+        throw new Error(`Thumbnail item not found in sidebar item at index ${index}`);
+    }
 
-            const sidebarItem = document.createElement('div');
-            sidebarItem.className = 'sidebar-item';
-            sidebarItem.id = `sidebar-item-${index}_${number}`;
-            sidebarItem.classList.add('sidebar-item-new');
+    // [TODO] Is `structuredClone` necessary?
+    network.sides[index] = new Network(thumbnailItem, structuredClone(graphData), VIS_SIDE_OPTIONS);
+}
 
-            const label = document.createElement("div");
-            label.id = `label-${index}_${number}`;
-            label.textContent = `Subgraph ${index}`;
-
-            const thumbnail = document.createElement("div");
-            thumbnail.className = "sidebar-thumbnail";
-            thumbnail.id = `thumbnail-${index}_${number}`;
-
-            sidebarItem.append(label, thumbnail);
-
-            sideDisplay.appendChild(sidebarItem);
-
-            sidebarItem.classList.add('graph-fade');
-            setTimeout(() => {
-                sidebarItem.classList.remove('graph-fade');
-            }, delay / 2);
-
-            sidebarItem.onclick = function () {
-                [...sideDisplay.children].forEach(child => child.classList.remove('active'));
-                sidebarItem.classList.add('active');
-
-                // const frontDisplay = interface_.front.children
-                // if (frontDisplay.length > 1) {
-                //     throw Error(`The front interface at section ${number} has more than one child.`);
-                // }
-
-                const frontItem = interface_.front;
-
-                network.front = cloneNetwork(network.sides[index], (frontItem as HTMLElement), VIS_MAIN_OPTIONS);
-
-                // [NOTE] Need to delete the class to be able to trigger the animation in next frames.
-                frontItem.classList.add('graph-fade');
-                setTimeout(() => {
-                    frontItem.classList.remove('graph-fade');
-                }, delay / 2);
-            };
-
-            // [TODO] Check if copy is necessary.
-            network.sides.push(new Network(thumbnail, structuredClone(graphData), VIS_SIDE_OPTIONS));
+function createSidebarItem(sidebar: HTMLElement, indexIn: number, graphData: LTGraph,
+    interface_: LTInterface, network: LTNetwork,): void {
+    function extractIndexOut(id: string) {
+        // [NOTE] Elements of an ambiguous sidebar have a suffix `_index` which specifies the index.
+        const parts = id.split('_');
+        if (parts.length < 2) {
+            throw new Error(`Invalid ID format: ${id}`);
         }
-    });
+
+        return parseInt(parts[1], 10);
+    }
+
+    function createSidebarElement(indexIn: number, indexOut: number): HTMLElement {
+        const sidebarItem = document.createElement('div');
+        sidebarItem.className = 'sidebar-item sidebar-item-new';
+        sidebarItem.id = `sidebar-item-${indexIn}_${indexOut}`;
+
+        const label = document.createElement('div');
+        label.id = `label-${indexIn}_${indexOut}`;
+        label.textContent = `Subgraph ${indexIn}`;
+
+        const thumbnail = document.createElement('div');
+        thumbnail.className = 'sidebar-thumbnail';
+        thumbnail.id = `thumbnail-${indexIn}_${indexOut}`;
+
+        sidebarItem.append(label, thumbnail);
+        return sidebarItem;
+    }
+
+    function setClickHandler(sidebar: HTMLElement, sidebarItem: HTMLElement, interface_: LTInterface,
+        network: LTNetwork, indexIn: number): void {
+        sidebarItem.onclick = () => {
+            Array.from(sidebar.children).forEach(child => {
+                child.classList.remove('active');
+            });
+
+            sidebarItem.classList.add('active');
+
+            const frontItem = interface_.front as HTMLElement;
+
+            // [TODO] Why this?
+            // const VIS_MAIN_OPTIONS = {
+            //     nodes: {
+            //         font: {
+            //             color: '#ff0000' // Red color
+            //         }
+            //     }
+            // }
+            network.front = moveNetwork(network.sides[indexIn], frontItem, VIS_MAIN_OPTIONS());
+
+            // [NOTE] Need to remove the animation class in order to trigger it again.
+            frontItem.classList.add('graph-fade');
+            frontItem.addEventListener('animationend', () => {
+                frontItem.classList.remove('graph-fade');
+            });
+        };
+
+    }
+
+    const indexOut = extractIndexOut(sidebar.id);
+    const sidebarItem = createSidebarElement(indexIn, indexOut);
+
+    sidebar.appendChild(sidebarItem);
+
+    // Add a fading animation.
+    sidebarItem.classList.add('graph-fade');
+
+    setClickHandler(sidebar, sidebarItem, interface_, network, indexIn);
+
+    // Associate the network to the sidebar item through the thumbnail.
+    const thumbnail = sidebarItem.children[1] as HTMLElement;
+    const sideNetwork = new Network(thumbnail, structuredClone(graphData), VIS_SIDE_OPTIONS);
+
+    network.sides.push(sideNetwork);
+}
+
+function handleAdditions(
+    additions: Record<number, LTGraph>,
+    interface_: LTInterface,
+    network: LTNetwork,
+): void {
+    for (const [key, graphData] of Object.entries(additions)) {
+        const index = parseInt(key, 10);
+        const sidebar = interface_.sides;
+
+        const sidebarItem = sidebar.children[index] as Optional<HTMLElement>;
+        if (sidebarItem) {
+            updateSidebarItem(sidebarItem, index, graphData, network);
+        } else {
+            createSidebarItem(sidebar, index, graphData, interface_, network);
+        }
+    };
 }
 
 // Set the sidebar item with highest index as active.
-async function setActiveItem(interface_: LTInterface, network: LTNetwork, active: HTMLElement[], delay: number) {
-
+function setActiveItem(interface_: LTInterface, network: LTNetwork, active: HTMLElement[]) {
     const activeItem = [...interface_.sides.children].at(-1) as HTMLElement;
 
     const lastActiveItem = active[0];
 
     if (activeItem && lastActiveItem !== activeItem) {
-        // Disable the last activated sidebar item if different.
         if (lastActiveItem) {
             lastActiveItem.classList.remove('active');
         }
 
-        // Add active class.
         activeItem.classList.add('active');
-
-        // const frontDisplay = interface_.front.children
-        // if (frontDisplay.length > 1) {
-        //     throw Error(`The front interface has more than one child.`);
-        // }
 
         const lastNetwork = network.sides.at(-1);
         if (!lastNetwork) {
-            throw Error(`Inexistant network.`);
+            throw Error(`Network data not found.`);
         }
 
-        // const frontItem = frontDisplay[0];
         const frontItem = interface_.front;
 
-        network.front = cloneNetwork_(lastNetwork, (frontItem as HTMLElement), VIS_MAIN_OPTIONS);
+        network.front = referNetwork(lastNetwork, (frontItem as HTMLElement), VIS_MAIN_OPTIONS());
 
         // [NOTE] Need to delete the class to be able to trigger the animation in next frames.
         frontItem.classList.add('graph-fade');
-        setTimeout(() => {
+        frontItem.addEventListener('animationend', () => {
             frontItem.classList.remove('graph-fade');
-        }, delay / 2);
+        }, { once: true });
     };
 
-    // Save it.
     active[0] = activeItem;
 }
-
 
 async function handlePreviews(network: LTNetwork, previews: LTId[], delay: number) {
     const frontNetwork = network.front;
     if (!frontNetwork) {
-        throw Error("Inexistant front network after `setActiveItem` call.")
+        throw Error("Non-existant front network after `setActiveItem` call.")
     }
 
     const nodes = (frontNetwork as VisNet).body.data.nodes;
@@ -370,244 +345,54 @@ async function handlePreviews(network: LTNetwork, previews: LTId[], delay: numbe
     nodes.update(resets);
 }
 
-async function handleMoves(moves: Record<number, LTEdge>, network: LTNetwork) {
+function handleMoves(moves: Record<number, LTEdge>, network: LTNetwork) {
     for (const [sindex, move] of Object.entries(moves)) {
         if (!move.to) continue;
         const index = Number(sindex);
         const sideNetwork = network.sides;
-        await moveHighlight(sideNetwork[index], move.from, move.to);
+        moveHighlight(sideNetwork[index], move.from, move.to);
     }
 }
 
 export async function updateGraphs(state: LTState, updates: LTUpdate[], previews: LTId[]) {
     const promises = updates.map(async (update, i) => {
-        await handleDeletions(update.delu, state.interfaces[i], state.networks[i], state.delay);
-        await handleAdditions(update.addu, state.interfaces[i], state.networks[i], state.delay);
-        await setActiveItem(state.interfaces[i], state.networks[i], state.active[i], state.delay);
+        handleDeletions(update.delu, state.interfaces[i], state.networks[i]);
+        handleAdditions(update.addu, state.interfaces[i], state.networks[i]);
+        setActiveItem(state.interfaces[i], state.networks[i], state.active[i]);
         // await handlePreviews(state.networks[i], previews, state.delay);
-        await handleMoves(update.movu, state.networks[i]);
+        handleMoves(update.movu, state.networks[i]);
     });
 
     await Promise.all(promises);
-
 }
 
-function getLastMovedNode(moves: Record<number, LTEdge>): LTId {
-    let maxKey = Math.max(...Object.keys(moves).map(Number));
-
-    // [TODO] Check if TS will return the empty string as `NULL` from Python server.
-    // [NOTE] An empty string is considered false in TypeScript.
-    let previousId = moves[maxKey].from;
-    while (!previousId) {
-        maxKey -= 1;
-        previousId = moves[maxKey].from;
-
-        if ((maxKey === 0) && !previousId) {
-            throw Error("Ambiguity resolved with no node movement.")
-        }
-    }
-
-    return previousId
-}
-
-function getNodeSection(previousId: LTId, networks: LTNetwork[]) {
-    for (let j = 0; j < networks.length; j++) {
-        const graph = networks[j].sides.at(-1);
-
-        const lastHighlightedNode = (graph as VisNet).body.data.nodes.get({
-            filter: function (node) {
-                if (!node.color) return false;
-                else if (typeof node.color === 'string') return false;
-                // Handles `Color` type.
-                return node.color.background === '#06b6d4' && node.color.border === '#06b6d4';
-            }
-        })[0];
-        if (previousId === lastHighlightedNode.id) {
-            return j;
-        }
-    }
-
-    throw Error("The last highlighted node is non-existent inside the networks.");
-}
-
-function countOccurrences(arr: number[], maxValue: number): Record<number, number> {
-    const occurrences: Record<number, number> = {};
-
-    for (let i = 0; i <= maxValue; i++) {
-        occurrences[i] = 0;
-    }
-
-    for (const num of arr) {
-        if (num >= 0 && num <= maxValue) {
-            occurrences[num]++;
-        }
-    }
-
-    return occurrences;
-}
-
-// [TODO] Need to clone the `state.active` and move the equivalent cloned element into it.
-function ambiguate(interfaces: LTInterface[], networks: LTNetwork[], actives: HTMLElement[][], occurences: Record<number, number>, delay: number): void {
-    Object.entries(occurences).forEach(([sindex, count]) => {
-        const section = parseInt(sindex);
-
-        const mainContainer = getRequiredElement<HTMLElement>('current-graph');
-
-        // [TODO] Need to remove the network from the list networks.
-        if (count == 0) {
-            const network = networks[section];
-
-            const interfaceToRemove = interfaces[section];
-
-            for (const networkToRemove of network.sides) {
-                networkToRemove.destroy();
-            }
-            interfaceToRemove.sides.remove();
-
-            mainContainer.removeChild(interfaceToRemove.front);
-
-            const networkToRemove = network.front;
-            if (!networkToRemove) {
-                throw Error("Destroying an non-existant front network.")
-            }
-
-            networkToRemove.destroy();
-            interfaceToRemove.front.remove();
-
-            // Remove the network from the networks.
-            networks.splice(section, 1);
-            interfaces.splice(section, 1);
-            // Remove the active element.
-            actives.splice(section, 1);
-        }
-        if (count > 1) {
-            const networkToClone = networks[section];
-
-            const interfaceToClone = interfaces[section];
-
-            for (let k = 1; k < count; k++) {
-                const interfaceSides = cloneContainer(interfaceToClone.sides);
-
-                // Need to bring the cloned front to the main display.
-                const interfaceFront = cloneContainer(interfaceToClone.front);
-                mainContainer.appendChild(interfaceFront);
-
-                interfaceFront.classList.add('current-subgraph-container');
-                interfaceFront.classList.add('graph-fade');
-                setTimeout(() => {
-                    interfaceFront.classList.remove('graph-fade');
-                }, delay / 2);
-
-                interfaces.push({
-                    front: interfaceFront,
-                    sides: interfaceSides,
-                });
-
-                const networkFront = networkToClone.front;
-                if (!networkFront) {
-                    throw Error("Network front is non-existant.");
-                }
-                const networkSides = networkToClone.sides;
-
-                const clonedNetworkFront = cloneNetwork(networkFront, interfaceFront, VIS_MAIN_OPTIONS);
-                const clonedNetworkSides = [];
-
-                for (let l = 0; l < interfaceSides.children.length; l++) {
-                    // [NOTE] The network is cloned along the thumbnail, each `sidebare-item-index_X` inside `interfaceSides`
-                    // has (1) a header, then (2) the thumbnail element.
-                    clonedNetworkSides.push(cloneNetwork(networkSides[l], (interfaceSides.children[l].children[1] as HTMLElement), VIS_SIDE_OPTIONS));
-                }
-
-                networks.push({ front: clonedNetworkFront, sides: clonedNetworkSides });
-
-                // Clone the actives.
-                actives.push([]);
-
-            }
-        }
-    })
-}
-
-// [TODO] Treat a case where currlen == prevlen but prevlen > 1, since it leads to if one the choices duplicated to
-// move a node to a highlighted state and that node was not highlighted before.
-export async function updateFrame(DOM: DOM, state: LTState, newData: LTData) {
+export function updateFrame(DOM: DOM, state: LTState, newData: LTData) {
     const newPreviews: LTId[][] = newData.previews.slice(state.frame);
     const newUpdates: LTUpdate[][] = newData.updates.slice(state.frame);
 
     for (let i = 0; i < newUpdates.length; i++) {
-        // Dealing with ambiguous symbols.
-        const currlen = newUpdates[i].length;
-        const prevlen = state.networks.length;
         const updates = newUpdates[i];
 
-        // If `offset != 0` means either (1) we've got an ambiguity and we've got to render every path,
-        // or (2) we've come from one and we've got to render the chosen path.
-        const offset = currlen - prevlen;
+        const currLength = updates.length;
+        const prevLength = state.networks.length;
 
-        // First iteration, deals with initial ambiguity.
-        if (prevlen === 0) {
-            // networks.front = Array(currlen).fill(null);
-            // networks.sides = Array(currlen).fill([]);
-            state.networks = Array.from({ length: currlen }, () => ({
-                front: null,
-                sides: [],
-            }));
-            state.active = Array(currlen).fill([]);
-            const mainContainer = getRequiredElement<HTMLElement>('current-graph');
-            const mainSidebar = getRequiredElement<HTMLElement>('sidebar-items');
-            // for (let k = 1; k < currlen; k++) {
-            //     const front = cloneContainer(state.interfaces[k - 1].front)
-            //     mainContainer.appendChild(front)
-            //     cloneContainer(state.interfaces[k].sides)
-            // }
-
-            for (let k = 0; k < currlen; k++) {
-                const sidebarItems = document.createElement('div');
-                sidebarItems.id = `sidebar-items_${k}`;
-                sidebarItems.classList.add('sidebar-items');
-                mainSidebar.appendChild(sidebarItems);
-                const frontItem = document.createElement('div');
-                frontItem.id = `graph-container_${k}`;
-                frontItem.classList.add('current-subgraph-container');
-                mainContainer.appendChild(frontItem)
-                state.interfaces.push({
-                    front: frontItem,
-                    sides: sidebarItems,
-                });
-            }
+        if (prevLength === 0) {
+            initializeLayout(DOM, state, currLength);
+        } else {
+            // If `(currLength - prevLength) != 0` means either (1) we've got an ambiguity and we've 
+            // got to render every possible graph, or (2) we've come from one and we've got to render the chosen graph.
+            // If `(currLength - prevLength) == 0` means we've got a (chosen) subgraph of ambiguities
+            // from the original graphs.
+            updateLayout(DOM, state, prevLength, updates);
         }
 
-        // Check if last update was ambiguous, if that's the case, then to clean the unchosen path.
-        else if (offset !== 0 || offset == 0) {
-            let concreteIndices: number[] = [];
-            for (let j = 0; j < updates.length; j++) {
-                const moves = updates[j].movu;
-
-                const previousId = getLastMovedNode(moves);
-
-                const section = getNodeSection(previousId, state.networks);
-
-                concreteIndices.push(section);
-            }
-            // Check the front's children to be > 1 does not make sense (it's one single object), we must check the children of the main display
-            // and it should be equal to newUpdates[i].length.
-            // Where is the logic for removal?
-
-            const occurrences = countOccurrences(concreteIndices, prevlen - 1);
-
-            // Get indices which will be deleted, or cloned 0 times and in ambiguate function when count is 0, remove the interface
-            // the network.
-
-            ambiguate(state.interfaces, state.networks, state.active, occurrences, state.delay);
-        }
-
-        await updateGraphs(state, newUpdates[i], newPreviews[i]);
+        updateGraphs(state, updates, newPreviews[i]);
     }
 
+    // Update state.
     state.response.data = newData;
     state.frame = newData.updates.length;
 
-    // Update counter.
     DOM.display.frameCounter.textContent = `Frame ${state.frame}/${state.frame}`;
 
     // Update LLM response (fragmented strings allows simple transitions to previous frames).

@@ -1,15 +1,15 @@
-from csv import Error
 import json
 import os
 import threading
 import time
+
+from csv import Error
 from copy import deepcopy
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from typing import Any, KeysView, Sequence, overload
-import re
+from typing import Any, KeysView, overload
 
-from lextrail.base import CFGStatefulGraph, Symbol, SymbolGraph, SymbolType
-from lextrail.guide import Guide, CFGStatefulGraph, CFGGenerationState, CFGGuide
+from lextrail.base import CFGStatefulGraph, Symbol, SymbolGraph, SymbolType, LTDeque
+from lextrail.guide import Guide, CFGStatefulGraph, CFGGuide
 from lextrail.helpers import LTContext, _get_symbols_from_generated_symbol_graph
 from lextrail.utils.simulate import MockLLM, _get_partial_guided_response
 
@@ -19,7 +19,6 @@ VizUpdate = dict[str, Any]
 
 DEFAULT_STATE = {
     "updates": [],
-    "updates_v2": [],
     "rollbacks": [],
     "previews": [],
     "response": [],
@@ -31,6 +30,7 @@ DEFAULT_SETTINGS = {
     "interrupted": False,
     "reset": False,
     "speed": 1,  # Default 1000ms delay.
+    "run": 1,
 }
 
 
@@ -69,8 +69,10 @@ def _extract_preview(next_symbols: KeysView[Symbol]) -> list[str]:
     return preview_ids
 
 
+# [NOTE] We use `LTDeque` for both `Guide` and `CFGGuide`, `CFGStatefulGraph` needs to be wrapped 
+# into a `LTDeque` for `Guide`. 
 def _extract_update(
-    *, prev_states: list[CFGStatefulGraph], curr_states: list[CFGStatefulGraph]
+    *, prev_states: LTDeque[CFGStatefulGraph], curr_states: LTDeque[CFGStatefulGraph]
 ) -> VizUpdate:
     movu: dict[int, dict[str, str]] = {}
     addu: dict[int, VizGraph] = {}
@@ -119,19 +121,17 @@ def _to_rollback(vizupdate: VizUpdate) -> VizUpdate:
     return {
         "addu": vizupdate["delu"],
         "movu": {
-            index: {
-                v: k for k, v in ids.items() if k
-            }  # Only inverse moves with valid `fromId`.
+            index: {"from": ids["to"], "to": ids["from"]}
             for index, ids in vizupdate["movu"].items()
         },
         "delu": vizupdate["addu"],
     }
 
-
 class Simulate:
     state: dict[str, Any]
     settings: dict[str, Any]
 
+    # [TODO] Can an abstract class remove overload?
     @overload
     def __init__(self: "Simulate", guide: Guide) -> None: ...
 
@@ -157,46 +157,48 @@ class Simulate:
 
     def get_next_state(self):
         mock_llm = MockLLM()
-        chosen_symbols: list[Symbol] = []
-        chosen_states = []
 
-        listsavv = []
-        listsavv_2 = []
+        curr_symbols, curr_states = [], []
         prev_states = []
-        prev_symbols = []
-        prev_state_sav = []
         while True:
-            curr_states = []
             # Check if the simulation is interrupted.
             if self.settings["interrupted"]:
                 print("Simulation has been interrupted.")
-                break
-
+                self.state["interrupted"] = True
+                # Run proceeds in case of a reset.
+                while not self.settings["reset"]:
+                    time.sleep(0.1)
+                continue
+ 
             # Check if the simulation is paused.
             while self.settings["paused"] and not self.settings["interrupted"]:
+                print("Simulation has been paused.")
                 time.sleep(0.1)
 
             # [TODO] Check if the simulation is reset.
             if self.settings["reset"]:
                 print("Simulation has been reset.")
-                prev_states = []
+                # Set the id for the next run.
+                next_run = self.settings["run"] + 1    
                 # Reset the states and settings.
+                prev_states = []      
                 self.state, self.settings = (
                     deepcopy(DEFAULT_STATE),
                     deepcopy(DEFAULT_SETTINGS),
                 )
-                # Reset CFGGuide.
-                chosen_symbols, chosen_states = [], []
+                # Reset Guide/CFGGuide.
+                curr_symbols, curr_states = [], []
                 # Reset response.
                 mock_llm.response = []
+                # Increment run.
+                self.settings["run"] = next_run
 
-            chosen_symbols, chosen_states = _get_partial_guided_response(
-                self.guide, deepcopy(chosen_symbols), deepcopy(chosen_states), mock_llm
+            curr_symbols, curr_states = _get_partial_guided_response(
+                self.guide, deepcopy(curr_symbols), deepcopy(curr_states), mock_llm
             )
-            listsavv_2.append(chosen_states)
             self.state["response"] = mock_llm.response
 
-            if not chosen_states:
+            if not curr_states:
                 print("Simulation is complete, no more states to process.")
                 self.state["completed"] = True
                 # Run proceeds in case of a reset.
@@ -204,93 +206,90 @@ class Simulate:
                     time.sleep(0.1)
                 continue
 
-            # if isinstance(self.guide, CFGGuide):
-            #     for m, cfg_stateful_graphs in enumerate(list(zip(*chosen_states))):
-            #         for n, cfg_stateful_graph in enumerate(set(cfg_stateful_graphs)):
-            #             curr_states.append(cfg_stateful_graph)
-            # else:
-            #     for m, cfg_stateful_graph in enumerate(chosen_states):
-            #         curr_states.append(cfg_stateful_graph)
-
+            _next_update, _next_rollback = [], []
             _next_preview = _extract_preview(self.guide.next_terminals_w_states.keys())
 
-            _next_update = []
+            # `prev_states` is ambiguous, then it'll either be a List[CFGStatefulGraph]
+            #  or List[LTDeque[CFGStatefulGraph]].
+            curr_states_, prev_states_ = [], []
+            if len(prev_states) > 1:   
+                # When `curr_state` is `CFGStatefulGraph` from `Guide`, then `prev_states` should
+                # be List[CFGStatefulGraph].
+                if isinstance(curr_states, list) and all(isinstance(x, CFGStatefulGraph) for x in curr_states):
+                    curr_states_ = [LTDeque([state]) for state in curr_states]
+                    # Cast each element in `prev_states`into the right type.
+                    prev_states_ = [LTDeque([state]) for state in prev_states]
+                elif all(isinstance(x, CFGStatefulGraph) for curr_state in curr_states for x in curr_state):
+                    curr_states_, prev_states_ = curr_states, prev_states
 
-            if len(prev_states) > 1:
-                for curr_states in chosen_states:
-                    # When `curr_states` is List[CFGStatefulGraph].
-                    if isinstance(curr_states, CFGStatefulGraph):
-                        curr_states = [curr_states]
+                for curr_state in curr_states_:          
+                    # Match the correct previous state to the current (chosen) state, we've got 
+                    # to backtrack the antecedents in the current state until it matches the node
+                    # at which we left in the previous state. 
 
-                    if prev_states:
-                        for prev_state in prev_states:
-                            if isinstance(prev_state, CFGStatefulGraph):
-                                prev_state = [prev_state]
+                    # If we're dealing with CFGGuide, backtracking goes through the layers in LTDeque,
+                    # if the antecedent of some node is `None`, then we go to the layer underneath.
+                    # Then, we keep going until we reach a layer which state has a valid
+                    # source, if it's a non-terminal symbol, we backtrack until we get to a terminal
+                    # symbol.
+                    prev_symbol = curr_state[-1].state.s_metadata["_SRC"]
 
-                            _prev_symbol = curr_states[-1].state.s_metadata["_SRC"]
-                            k = 1
-                            while not _prev_symbol:
-                                _prev_symbol = curr_states[-1 - k].state.s_metadata[
-                                    "_SRC"
-                                ]
-                                k += 1
+                    k = 1
+                    while not prev_symbol:
+                        prev_symbol = curr_state[-1 - k].state.s_metadata[
+                            "_SRC"
+                        ]
+                        k += 1
 
-                                if _prev_symbol is None:
-                                    continue
+                        if k == len(curr_state):
+                            raise Error("Simulator Error: Backtracking didn't lead to a symbol source.")
 
-                                while _prev_symbol.s_type == SymbolType.NON_TERMINAL:
-                                    _prev_symbol = _prev_symbol.s_metatadata["_SRC"]
+                    while prev_symbol.s_type == SymbolType.NON_TERMINAL:
+                        prev_symbol = prev_symbol.s_metatadata["_SRC"]
 
-                                # Regex?
-                                if _prev_symbol.s_type in [
-                                    SymbolType.TERMINAL,
-                                    SymbolType.REFERENCE,
-                                ]:
-                                    if _prev_symbol == prev_state[-1].state:
-                                        prev_state_sav = prev_state
-                                        break
-                                else:
-                                    raise Error("MMMMMMMMMMMMMMMMMM")
+                    if prev_symbol.s_type not in [
+                            SymbolType.TERMINAL,
+                        ]:
+                        raise Error("Simulator Error: Backtracking didn't lead to a terminal symbol source.")
 
-                            if _prev_symbol == prev_state[-1].state:
-                                prev_state_sav = prev_state
-                                break
+                    # Then we compare with the last node where we left in the previous state 
+                    # `prev_state[-1].state`, WHICH can't be a non-terminal symbol, since ambiguity
+                    # occurs at terminal symbols with the same content. 
+                    # `Guide` is trivial since it deals with terminal symbols only.
+                    btrk_state = next((prev_state for prev_state in prev_states_ if prev_symbol == prev_state[-1].state), None)
+                    if btrk_state is None:
+                        raise Error("Simulator Error: Backtracking couldn't associate a source from the previous frame.")
 
-                        if not prev_state_sav:
-                            raise Error("TTTTTTTTTTTTTTTTTTT.")
-
-                        # if curr_states[-1].state.s_metadata["_SRC"] == prev_state[-1].state:
-                        #     prev_state_sav = prev_state
-                        #     break
-
-                    _next_update.append(
-                        _extract_update(
-                            prev_states=prev_state_sav, curr_states=curr_states
+                    viz_update =  _extract_update(
+                            prev_states=btrk_state, curr_states=curr_state
                         )
-                    )
+                    
+                    _next_update.append(viz_update)
+                    _next_rollback.append(_to_rollback(viz_update))
             else:
-                for curr_states in chosen_states:
-                    if isinstance(curr_states, CFGStatefulGraph):
-                        curr_states = [curr_states]
+                if all(isinstance(x, CFGStatefulGraph) for x in curr_states):
+                    # [NOTE] Throw an error if `curr_states` is empty? Or make an empty CFGGuide/Guide valid?
+                    curr_states_ = [LTDeque([state]) for state in curr_states]
+                    # Cast each element in `prev_states` into the right type.
+                    prev_states_ = LTDeque([prev_states[0]]) if prev_states else LTDeque([])
+                elif all(isinstance(x, CFGStatefulGraph) for curr_state in curr_states for x in curr_state):
+                    curr_states_ = curr_states
+                    prev_states_ = prev_states[0] if prev_states else LTDeque([])
 
-                    if prev_states:
-                        if isinstance(prev_states[0], CFGStatefulGraph):
-                            prev_state_sav = [prev_states[0]]
-
-                    _next_update.append(
-                        _extract_update(
-                            prev_states=prev_state_sav if prev_states else [],
-                            curr_states=curr_states,
+                for curr_state in curr_states_:
+                    viz_update = _extract_update(
+                            prev_states=prev_states_,
+                            curr_states=curr_state,
                         )
-                    )
 
-            self.state["previews"].append(_next_preview)
+                    _next_update.append(viz_update)
+                    _next_rollback.append(_to_rollback(viz_update))
+
             self.state["updates"].append(_next_update)
-            # self.state["rollbacks"].append(_to_rollback(_next_update))
+            self.state["rollbacks"].append(_next_rollback)
+            self.state["previews"].append(_next_preview)
 
-            prev_states = chosen_states
-            prev_symbols = chosen_symbols
-            listsavv.append(chosen_states)
+            prev_states = curr_states
 
             # Add delay based on speed setting.
             if self.settings["speed"] > 0:

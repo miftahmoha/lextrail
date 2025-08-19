@@ -57,6 +57,7 @@ export type LTSetting = {
     "interrupted": boolean,
     "reset": boolean,
     "delay": number,
+    "run": number,
 };
 
 export type LTFetch = {

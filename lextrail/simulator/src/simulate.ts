@@ -1,7 +1,7 @@
-import { LTFetch, LTState, LTNetwork, LTNetworkA } from './types';
-import { getRequiredElement, updateControlButtons } from './helpers';
-import { DOM, addEventListeners } from './interface';
+import { LTFetch, LTState } from './types';
+import { updateControlButtons, getRunIndex } from './helpers';
 import { updateFrame, updateGraphs } from './render';
+import { DOM, addEventListeners } from './interface';
 
 async function loadGraphs(state: LTState): Promise<void> {
     if (!state.fetch) null;
@@ -12,31 +12,36 @@ async function loadGraphs(state: LTState): Promise<void> {
 
         const content: LTFetch = await response.json();
 
-        if (JSON.stringify(content.data.updates) !== JSON.stringify(state?.response?.data?.updates)) {
-            updateFrame(DOM, state, content.data);
-
-            // [NOTE] Deepcopies are known to be very expensive.
-            state.response.data = content.data;
-        }
-
         const isPaused = content.setting.paused;
         const isInterrupted = content.setting.interrupted;
-        const isComplete = state.response.data.completed;
+        const isComplete = content.data.completed;
 
         const total = content.data.updates.length;
+
+        if (
+            // [NOTE] Each run has an assigned ID, during a reset, the ID is incremented. No update
+            // is issued when there is a mismatch between Python and TS.
+            content.setting.run === state.response.setting.run &&
+            JSON.stringify(content.data.updates) !== JSON.stringify(state?.response?.data?.updates)) {
+            updateFrame(DOM, state, content.data);
+
+            if (isComplete)
+                DOM.display.status.innerHTML =
+                    `Simulation complete. Displaying frame ${total} of ${total}`;
+        }
 
         updateControlButtons(DOM, state.frame, total,
             isPaused, isInterrupted, isComplete);
 
-        if (isComplete || isInterrupted) {
+        DOM.display.frameCounter.textContent = `Frame ${state.frame}/${total}`;
+
+        // Update LLM response (fragmented strings allows simple transitions to previous frames).
+        DOM.display.llmResponse.value = state.response.data.response.slice(0, state.frame).join('') || "No response available";
+
+        if (isInterrupted) {
             state.fetch = false;
-            if (isInterrupted) {
-                DOM.display.status.innerHTML =
-                    `Simulation interrupted. Displaying Subgraph ${total} of ${total}`;
-            } else if (isComplete) {
-                DOM.display.status.innerHTML =
-                    `Simulation complete. Displaying Subgraph ${total} of ${total}`;
-            }
+            DOM.display.status.innerHTML =
+                `Simulation interrupted. Displaying frame ${total} of ${total}`;
         }
 
         loadGraphs(state);
@@ -47,11 +52,7 @@ async function loadGraphs(state: LTState): Promise<void> {
     }
 }
 
-function main() {
-    // Initialize.
-    // const network: LTNetwork = { front: null, sides: [] };
-    // const networks: LTNetworkA = { front: [], sides: [] };
-
+async function main() {
     const INITIAL_STATE: LTState = {
         response: {
             data: {
@@ -60,29 +61,20 @@ function main() {
                 "previews": [],
                 "response": [],
                 "completed": false,
-            }
-            , setting: {
+            },
+            setting: {
                 "paused": false,
                 "interrupted": false,
                 "reset": false,
                 "delay": 1000,
+                "run": await getRunIndex(),
             }
         }, interfaces: [], networks: [], frame: 0, delay: 1000, active: [], fetch: true
     };
 
-    // INITIAL_STATE.interfaces.push({
-    //     front: getRequiredElement<HTMLElement>('graph-container_0'),
-    //     sides: getRequiredElement<HTMLElement>('sidebar-items_0'),
-    // })
-
-    // INITIAL_STATE.networks.push({
-    //     front: null,
-    //     sides: [],
-    // });
-
     INITIAL_STATE.active.push([])
 
-    addEventListeners(DOM, INITIAL_STATE.networks, INITIAL_STATE, updateGraphs);
+    addEventListeners(DOM, INITIAL_STATE, updateGraphs);
 
     loadGraphs(INITIAL_STATE);
 }
