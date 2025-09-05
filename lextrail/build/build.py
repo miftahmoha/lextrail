@@ -40,8 +40,8 @@ def construct_symbol_subgraph(
         )
         # Node without connections.
         symbol_graph.tree[initial]
-        # Leak metadata to symbols.
-        symbol_graph.leak(graph_metadata)
+        # Broadcast metadata to symbols.
+        symbol_graph.broadcast(graph_metadata)
         return symbol_graph
 
     symbol_previous = initial
@@ -68,8 +68,8 @@ def construct_symbol_subgraph(
     # Add the node to the finals.
     symbol_graph.finals.add(symbol_previous)
 
-    # Leak metadata to symbols.
-    symbol_graph.leak(graph_metadata)
+    # Broadcast metadata to symbols.
+    symbol_graph.broadcast(graph_metadata)
 
     return cast_symbol_graph(symbol_graph, graph_type)
 

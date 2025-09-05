@@ -1,11 +1,15 @@
 <html class="light-mode">
+
 <head>
     <title>Lextrail Simulator</title>
     <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
     <link rel="icon" href="../assets/favicon.ico" type="image/x-icon">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <script src="https://unpkg.com/vis-network@latest/dist/vis-network.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Quicksand:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="vis-network.min.js"></script>
+    <!-- <script src="https://unpkg.com/vis-network@latest/dist/vis-network.min.js"></script> -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Quicksand:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
     <link href="styles.css" rel="stylesheet" type="text/css" />
     <script src="script.js" defer></script>
 </head>
@@ -30,14 +34,14 @@
         <div id="current-sidebar"></div>
         <!-- Adding to thing accordingly each side-items-x to highlight following the buttons (remove the previous from sidebar), side-items-1 is the default. -->
     </div>
-    
+
     <div class="main-content">
         <button class="theme-toggle" id="theme-toggle">
             <i class="fas fa-moon"></i>
         </button>
         <h1>Lextrail Simulator <span class="subtitle">v2.0</span></h1>
         <div class="status" id="status">Loading graphs from server...</div>
-        
+
         <div class="controls">
             <button id="btn-prev" disabled><i class="fas fa-chevron-left"></i></button>
             <button id="btn-pause"><i class="fas fa-pause"></i></button>
@@ -45,7 +49,7 @@
             <div class="frame-counter" id="frame-counter">Frame 0/0</div>
             <button id="btn-interrupt" class="danger"><i class="fas fa-stop"></i></button>
             <button id="btn-reset"><i class="fas fa-sync-alt"></i></button>
-            
+
             <div class="delay-control">
                 <label>Delay:</label>
                 <input type="range" id="delay-slider" min="0" max="2000" value="1000" class="delay-slider">
@@ -60,4 +64,5 @@
         <textarea class="llm-response" id="llm-response" readonly>Waiting for LLM response...</textarea>
     </div>
 </body>
+
 </html>

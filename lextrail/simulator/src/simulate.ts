@@ -1,28 +1,28 @@
-import { LTFetch, LTState } from './types';
+import { Py_Recieve, Ts_State } from './types';
 import { updateControlButtons, getRunIndex } from './helpers';
 import { updateFrame, updateGraphs } from './render';
 import { DOM, addEventListeners } from './interface';
 
-async function loadGraphs(state: LTState): Promise<void> {
+async function loadGraphs(state: Ts_State): Promise<void> {
     if (!state.fetch) null;
 
     try {
         const response = await fetch("/graph");
         if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
 
-        const content: LTFetch = await response.json();
+        const content: Py_Recieve = await response.json();
 
         const isPaused = content.setting.paused;
         const isInterrupted = content.setting.interrupted;
         const isComplete = content.data.completed;
 
-        const total = content.data.updates.length;
+        const total = content.data.results.length;
 
         if (
             // [NOTE] Each run has an assigned ID, during a reset, the ID is incremented. No update
-            // is issued when there is a mismatch between Python and TS.
+            // is issued when there is a mismatch between Python and TypeScript.
             content.setting.run === state.response.setting.run &&
-            JSON.stringify(content.data.updates) !== JSON.stringify(state?.response?.data?.updates)) {
+            JSON.stringify(content.data.results) !== JSON.stringify(state?.response?.data?.results)) {
             updateFrame(DOM, state, content.data);
 
             if (isComplete)
@@ -53,12 +53,10 @@ async function loadGraphs(state: LTState): Promise<void> {
 }
 
 async function main() {
-    const INITIAL_STATE: LTState = {
+    const INITIAL_STATE: Ts_State = {
         response: {
             data: {
-                "updates": [],
-                "rollbacks": [],
-                "previews": [],
+                "results": [],
                 "response": [],
                 "completed": false,
             },

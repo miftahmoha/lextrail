@@ -5,6 +5,38 @@ from enum import Enum
 from typing import Any, Generic, Iterable, Iterator, Optional, TypeVar
 from copy import deepcopy
 
+# [TODO] Will remove the repetition.
+def bfs(symbol_graph: "SymbolGraph", start) -> list["Symbol"]:
+    visited = []
+
+    queue = deque()  # type: ignore
+    queue.extend(list(start))
+
+    while queue:
+        vertex = queue.popleft()
+        if vertex not in visited:
+            visited.append(vertex)
+            queue.extend(symbol_graph.tree[vertex])
+
+    return visited
+
+def _get_symbols_from_generated_symbol_graph(
+    symbol_graph: "SymbolGraph",
+) -> dict[str, "Symbol"]:
+    symbols: dict[str, Symbol] = {}
+
+    start = symbol_graph.initials
+    visited = bfs(symbol_graph.copy(), start)
+
+    # The default int is set to 0.
+    order: dict[str, int] = defaultdict(int)
+    for symbol in visited:
+        symbols[symbol.content + f"|{order[symbol.content]}"] = symbol
+        order[symbol.content] += 1
+
+    return symbols
+
+
 T = TypeVar("T")
 
 # [TODO] Inspect the need of an ordered set.
@@ -51,11 +83,12 @@ class OrderedSet(Generic[T]):
         return OrderedSet(self._dict.keys() & other._dict.keys())
 
     def copy(self) -> "OrderedSet[T]":
-        # [TODO] At some point, using deepcopy wasn't needed until metadata being set
+        # [NOTE] At some point, using deepcopy wasn't needed until metadata being set
         # of a symbol A was shared with another symbol B within `Guide` at 
         # '"start" "ambiguous" "ambiguous"* "end"' where "ambiguous"(*) shared the metadata with "end".
-        # Explore the root of the shallow copying in this case.
+        # [TODO] Explore the root of the shallow copying in this case.
         return OrderedSet(deepcopy(self._dict))
+
 
 
 @dataclass
@@ -78,6 +111,14 @@ class Symbol:
             and (self.s_type == other.s_type)
             and (self.s_id == other.s_id)
         )
+    
+    def serialize(self):
+        return {
+                # `label` is the convention used by Viz.
+                "label": self.content,
+                "id": str(self.s_id),
+                "type": str(self.s_type),
+                }
 
 
 class SymbolType(Enum):
@@ -108,10 +149,29 @@ class SymbolGraph:
 
     def __bool__(self) -> bool:
         return bool(self.initials) and bool(self.tree) and bool(self.finals)
+    
+    # [TODO] Make it more concise.
+    def serialize(self) -> str:
+        nodes: list[dict[str, str]] = []
+        edges: list[dict[str, str]] = []
 
-    def leak(self, metadata: dict[str, Any]):
+        symbols = _get_symbols_from_generated_symbol_graph(self)
+        for symbol in symbols.values():
+            nodes.append(symbol.serialize())
+
+        for symbol, successors in self.tree.items():
+            src_id = str(symbol.s_id)
+            for successor in successors:
+                dst_id = str(successor.s_id)
+                edges.append({"from": src_id, "to": dst_id, "color": "gray"})
+
+        return {"nodes": nodes, "edges": edges}
+
+    # [NOTE] Why is broadcasting needed?
+    def broadcast(self, metadata: dict[str, Any]):
         for symbol in self.initials:
             symbol.s_metadata = metadata
+
         for successors in self.tree.values():
             for symbol in successors:
                 symbol.s_metadata = metadata
@@ -150,6 +210,9 @@ class CFGStatefulGraph:
             and (self.label == other.label)
             and (self.state == other.state)
         )
+    
+    def serialize(self):
+        return {"graph": self.graph.serialize(), "state": self.state.serialize(), "label": self.label}
 
     def copy(self):
         return CFGStatefulGraph(
@@ -164,6 +227,9 @@ class LTDeque(deque, Generic[T]):
     # Ensure other methods (like slicing) also use this behavior.
     def __copy__(self) -> "LTDeque[T]":
         return self.copy()
+    
+    def serialize(self):
+        return [stateful_graph.serialize() for stateful_graph in self]
 
 
 CFGGenerationState = LTDeque[CFGStatefulGraph]

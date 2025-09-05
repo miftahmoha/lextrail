@@ -1,6 +1,9 @@
 import { Network, Options } from "vis";
-import { VisNet, LTAction, LTNetwork } from './types';
 import { DOM } from './interface'
+import {
+	VisNet,
+	Ts_Action, Ts_Network
+} from './types';
 
 export function getRequiredElement<T extends HTMLElement>(id: string): T {
 	const element = document.getElementById(id) as T | null;
@@ -35,7 +38,7 @@ export function updateControlButtons(DOM: DOM, currentFrame: number, totalFrames
 	DOM.inputs.delayInput.disabled = isInterrupted || isComplete;
 }
 
-export function updateGraphFontColors(networks: LTNetwork[], root: HTMLElement): void {
+export function updateGraphFontColors(networks: Ts_Network[], root: HTMLElement): void {
 	const color = root.classList.contains('light-mode') ? '#000000' : '#ffffff';
 
 	const sections = networks.length;
@@ -74,7 +77,7 @@ export function updateGraphFontColors(networks: LTNetwork[], root: HTMLElement):
 
 
 // Sending data to the server.
-export function sendControlCommand(action: LTAction, extraData: { rate?: number } = {}) {
+export function sendControlCommand(action: Ts_Action, extraData: { rate?: number } = {}) {
 	const data = {
 		action: action,
 		...extraData
@@ -93,22 +96,6 @@ export function sendControlCommand(action: LTAction, extraData: { rate?: number 
 		.catch(error => {
 			console.error('Error sending control command:', error);
 		});
-}
-
-export function Counter(arr: number[], maxValue: number = arr.length): Record<number, number> {
-	const counter: Record<number, number> = {};
-
-	for (let i = 0; i <= maxValue; i++) {
-		counter[i] = 0;
-	}
-
-	for (const num of arr) {
-		if (num >= 0 && num <= maxValue) {
-			counter[num]++;
-		}
-	}
-
-	return counter;
 }
 
 export function moveNetwork(sourceNetwork: Network, targetContainer: HTMLElement, options: Options): Network {

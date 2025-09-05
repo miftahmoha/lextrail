@@ -198,12 +198,6 @@ class Guide:
                     next_chosen_state = chosen_state.copy()
                     # Set state to the last visited symbol.
                     next_chosen_state.state = next_symbol
-                    # [NOTE] The simulator generates the changes for a frame through comparing the previous
-                    # and the next state, when dealing with ambiguous states, it needs to localize the
-                    # corresponding previous state for a certain next (chosen) state. 
-                    # Using the `_SRC` key, we can track the source from the next (chosen) state, thus choosing
-                    # the right previous state.
-                    next_symbol.s_metadata["_SRC"] = chosen_state.state
                     # Save the next possible terminal `next_symbol` with its history.
                     self._next_terminals_w_states[next_symbol] = next_chosen_state
 
@@ -333,7 +327,7 @@ class CFGGuide:
     
     # [TODO] At some point the line below was commented, why? 
     # Commenting the decorator below invalidates some tests in `test_lextrail_assembly.py`.
-    @clear_dict_before_call("_next_terminals_w_states")
+    # @clear_dict_before_call("_next_terminals_w_states")
     def _get_next_terminals(
         self,
         chosen_symbols: list[Symbol] = [],
@@ -431,12 +425,6 @@ class CFGGuide:
                     next_chosen_state = chosen_state.copy()
                     # Set state to the last visited symbol.
                     next_chosen_state[-1].state = next_symbol
-                    # [NOTE] The simulator generates the changes for a frame through comparing the previous
-                    # and the next state, when dealing with ambiguous states, it needs to localize the
-                    # corresponding previous state for a certain next (chosen) state. 
-                    # Using the `_SRC` key, we can track the source from the next (chosen) state, thus choosing
-                    # the right previous state.
-                    next_symbol.s_metadata["_SRC"] = chosen_state[-1].state
                     # Save the next possible terminal `next_symbol` with its history.
                     self._next_terminals_w_states[next_symbol] = next_chosen_state
 
@@ -448,12 +436,6 @@ class CFGGuide:
                     # we pop the upper stack layer. We would then search for the next symbols from
                     # the last visited `non-terminal` symbol.
                     next_chosen_state[-1].state = next_symbol
-                    # [NOTE] The simulator generates the changes for a frame through comparing the previous
-                    # and the next state, when dealing with ambiguous states, it needs to localize the
-                    # corresponding previous state for a certain next (chosen) state. 
-                    # Using the `_SRC` key, we can track the source from the next (chosen) state, thus choosing
-                    # the right previous state.
-                    next_symbol.s_metadata["_SRC"] = chosen_state[-1].state
                     # Turning the symbol graph that'll be added to the stack
                     # into a stateful object `CFGStatefulGraph`.
                     cfg_stateful_graph = CFGStatefulGraph(
@@ -499,6 +481,14 @@ class CFGGuide:
                 self._next_terminals_w_states = _update_single_token_combinations(
                     self, self._token_graphs
                 )
+
+    @clear_dict_before_call("_next_terminals_w_states")
+    def get_next_terminals_temp(
+        self,
+        chosen_symbols: list[Symbol] = [],
+        chosen_states: list[CFGGenerationState] = [],
+    ):
+        self._get_next_terminals(chosen_symbols, chosen_states)
 
     @property
     def next_terminals_w_states(self):

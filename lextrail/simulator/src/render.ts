@@ -1,9 +1,14 @@
-import { Options } from "vis";
-import { Network, VisNet, LTId, LTEdge, LTGraph, LTUpdate, LTData, LTNetwork, LTInterface, LTState, Optional } from './types'
+import { Network, Options } from "vis";
 import { referNetwork, moveNetwork } from './helpers';
 import { DOM } from './interface'
 import { initializeLayout, updateLayout } from './layout'
+import {
+    Optional, Undefinable, VisNet,
+    Ts_Add, Ts_Mov, Ts_Del, Ts_Update, Ts_Network, Ts_Interface, Ts_State,
+    Py_Data, Py_CFGStatefulGraph, Py_CFGGenerationState, Py_Graph
+} from './types'
 
+// [NOTE] Needs to check the theme each time it is called.
 export const VIS_MAIN_OPTIONS = (): Options => ({
     nodes: {
         shape: "dot",
@@ -63,57 +68,14 @@ export const VIS_SIDE_OPTIONS: Options = {
     },
 };
 
-// Moves the highlight from a node A to a node B.
-export function moveHighlight(network: Network, fromId: string, toId: string): void {
-    // [TODO] Add a check that `fromNode` should be in a highlighted state if not null.
-    const nodes = (network as VisNet).body.data.nodes;
-    const fromNode = fromId ? nodes.get(fromId) : null;
-    const toNode = toId ? nodes.get(toId) : null;
-
-    if (!toNode) {
-        throw new Error("Highlight sent to an invalid node.");
-    }
-
-    // Update `toNode` to highlighted state.
-    nodes.update({
-        id: toId,
-        color: {
-            background: '#06b6d4',
-            border: '#06b6d4'
-        },
-        shadow: {
-            enabled: true,
-            color: '#06b6d4',
-            size: 10,
-            x: 0,
-            y: 0
-        },
-    });
-
-    // Reset `fromNode` to default color if it exists.
-    if (fromId !== toId && fromNode) {
-        nodes.update({
-            id: fromId,
-            color: {
-                background: 'lightblue',
-                border: 'rgba(255, 255, 255, 0.05)',
-            },
-            shadow: {
-                enabled: false,
-            },
-        });
-    }
-}
-
-async function deleteSidebarItem(sidesContainer: HTMLElement, index: number): Promise<void> {
+function deleteSidebarItem(sidesContainer: HTMLElement, index: number): void {
     const sidebarItem = sidesContainer.children[index] as HTMLElement;
-
     if (!sidebarItem) {
         throw new Error(`Cannot delete non-existent sidebar item at index ${index}`);
     }
 
     // [NOTE] Need to delete the class to be able to trigger the animation in next frames.
-    // [NOTE] Buggy since it doesn't wait for the item removal, 
+    // [TODO] Buggy since it doesn't wait for the item removal, 
     // (1) Add an error when adding an existing sidebar item over an existing one, 
     // (2) Make the function wait for the animation to end.
     // sidebarItem.classList.add('sidebar-item-remove');
@@ -125,8 +87,8 @@ async function deleteSidebarItem(sidesContainer: HTMLElement, index: number): Pr
     sidebarItem.remove();
 }
 
-// [NOTE] No need to reason about `frontDisplay` since it's going to be updated to the last item by `setActiveItems`.
-async function deleteSideNetwork(sideNetworks: Network[], index: number): Promise<void> {
+// [NOTE] No need to reason about `frontDisplay` since it's going to be updated to the last item by `setActive`.
+function deleteSideNetwork(sideNetworks: Network[], index: number): void {
     const sideNetwork = sideNetworks[index];
 
     if (!sideNetwork) {
@@ -137,13 +99,9 @@ async function deleteSideNetwork(sideNetworks: Network[], index: number): Promis
     sideNetworks.splice(index, 1);
 }
 
-function handleDeletions(
-    deletions: Record<number, LTGraph>,
-    interface_: LTInterface,
-    network: LTNetwork,
-): void {
+function delGraphs(delu: Ts_Del, interface_: Ts_Interface, network: Ts_Network): void {
     // Delete from highest to lowest index to avoid array index shifts.
-    const indicesToDelete = Object.keys(deletions)
+    const indicesToDelete = Object.keys(delu)
         .map(Number)
         .sort((a, b) => b - a);
 
@@ -153,8 +111,9 @@ function handleDeletions(
     }
 }
 
-function updateSidebarItem(sidebarItem: HTMLElement, index: number, graphData: LTGraph,
-    network: LTNetwork): void {
+function updateSidebarItem(
+    sidebarItem: HTMLElement, index: number, graphData: Py_Graph, network: Ts_Network
+): void {
     sidebarItem.classList.add('sidebar-item-new');
 
     // `2 * index + 1` since each thumbnail is precedeed by a header.
@@ -167,8 +126,9 @@ function updateSidebarItem(sidebarItem: HTMLElement, index: number, graphData: L
     network.sides[index] = new Network(thumbnailItem, structuredClone(graphData), VIS_SIDE_OPTIONS);
 }
 
-function createSidebarItem(sidebar: HTMLElement, indexIn: number, graphData: LTGraph,
-    interface_: LTInterface, network: LTNetwork,): void {
+function createSidebarItem(
+    sidebar: HTMLElement, indexIn: number, graphData: Py_Graph, interface_: Ts_Interface, network: Ts_Network
+): void {
     function extractIndexOut(id: string) {
         // [NOTE] Elements of an ambiguous sidebar have a suffix `_index` which specifies the index.
         const parts = id.split('_');
@@ -196,8 +156,9 @@ function createSidebarItem(sidebar: HTMLElement, indexIn: number, graphData: LTG
         return sidebarItem;
     }
 
-    function setClickHandler(sidebar: HTMLElement, sidebarItem: HTMLElement, interface_: LTInterface,
-        network: LTNetwork, indexIn: number): void {
+    function setClickHandler(
+        sidebar: HTMLElement, sidebarItem: HTMLElement, interface_: Ts_Interface, network: Ts_Network, indexIn: number
+    ): void {
         sidebarItem.onclick = () => {
             Array.from(sidebar.children).forEach(child => {
                 child.classList.remove('active');
@@ -207,14 +168,6 @@ function createSidebarItem(sidebar: HTMLElement, indexIn: number, graphData: LTG
 
             const frontItem = interface_.front as HTMLElement;
 
-            // [TODO] Why this?
-            // const VIS_MAIN_OPTIONS = {
-            //     nodes: {
-            //         font: {
-            //             color: '#ff0000' // Red color
-            //         }
-            //     }
-            // }
             network.front = moveNetwork(network.sides[indexIn], frontItem, VIS_MAIN_OPTIONS());
 
             // [NOTE] Need to remove the animation class in order to trigger it again.
@@ -243,10 +196,8 @@ function createSidebarItem(sidebar: HTMLElement, indexIn: number, graphData: LTG
     network.sides.push(sideNetwork);
 }
 
-function handleAdditions(
-    additions: Record<number, LTGraph>,
-    interface_: LTInterface,
-    network: LTNetwork,
+function addGraphs(
+    additions: Ts_Add, interface_: Ts_Interface, network: Ts_Network,
 ): void {
     for (const [key, graphData] of Object.entries(additions)) {
         const index = parseInt(key, 10);
@@ -262,7 +213,7 @@ function handleAdditions(
 }
 
 // Set the sidebar item with highest index as active.
-function setActiveItem(interface_: LTInterface, network: LTNetwork, active: HTMLElement[]) {
+function setActive(interface_: Ts_Interface, network: Ts_Network, active: HTMLElement[]) {
     const activeItem = [...interface_.sides.children].at(-1) as HTMLElement;
 
     const lastActiveItem = active[0];
@@ -293,105 +244,169 @@ function setActiveItem(interface_: LTInterface, network: LTNetwork, active: HTML
     active[0] = activeItem;
 }
 
-async function handlePreviews(network: LTNetwork, previews: LTId[], delay: number) {
-    const frontNetwork = network.front;
-    if (!frontNetwork) {
-        throw Error("Non-existant front network after `setActiveItem` call.")
+export function moveHighlight(network: Network, fromId: Undefinable<string>, toId: string): void {
+    // [TODO] Add a check that `fromNode` should be in a highlighted state if not null.
+    const nodes = (network as VisNet).body.data.nodes;
+
+    const fromNode = fromId ? nodes.get(fromId) : null;
+    if (fromNode && fromId !== toId) {
+        nodes.update({
+            id: fromId,
+            color: {
+                background: 'lightblue',
+                border: 'rgba(255, 255, 255, 0.05)',
+            },
+            shadow: {
+                enabled: false,
+            },
+        });
     }
 
-    const nodes = (frontNetwork as VisNet).body.data.nodes;
-
-    // Highlight next possible nodes.
-    const updateProperties = {
-        color: {
-            background: '#FFFFFF',
-            border: '#FFFFFF',
-        },
-        shadow: {
-            enabled: true,
-            color: '#FFFFFF',
-            size: 10,
-            x: 0,
-            y: 0,
-        },
-    };
-
-    const updates = previews.map(id => ({
-        id: id,
-        ...updateProperties,
-    }));
-
-    nodes.update(updates);
-
-    // A slight pause to notice the highlight of the preview nodes.
-    await new Promise(resolve => setTimeout(resolve, delay / 2));
-
-    // Revert back to default.
-    const resetProperties = {
-        color: {
-            background: 'lightblue',
-            border: 'rgba(255, 255, 255, 0.05)',
-        },
-        shadow: {
-            enabled: false,
-        },
-    };
-
-    const resets = previews.map(id => ({
-        id: id,
-        ...resetProperties,
-    }));
-
-    nodes.update(resets);
+    const toNode = toId ? nodes.get(toId) : null;
+    if (!toNode) {
+        throw new Error("Highlight sent to an invalid node.");
+    }
+    else {
+        nodes.update({
+            id: toId,
+            color: {
+                background: '#06b6d4',
+                border: '#06b6d4'
+            },
+            shadow: {
+                enabled: true,
+                color: '#06b6d4',
+                size: 10,
+                x: 0,
+                y: 0
+            },
+        });
+    }
 }
 
-function handleMoves(moves: Record<number, LTEdge>, network: LTNetwork) {
+function moveGraphs(moves: Ts_Mov, network: Ts_Network) {
     for (const [sindex, move] of Object.entries(moves)) {
         if (!move.to) continue;
         const index = Number(sindex);
         const sideNetwork = network.sides;
-        moveHighlight(sideNetwork[index], move.from, move.to);
+        moveHighlight(sideNetwork[index], move?.from?.id, move?.to?.id);
     }
 }
 
-export async function updateGraphs(state: LTState, updates: LTUpdate[], previews: LTId[]) {
+export async function updateGraphs(state: Ts_State, updates: Ts_Update[] | Ts_Update[]) {
     const promises = updates.map(async (update, i) => {
-        handleDeletions(update.delu, state.interfaces[i], state.networks[i]);
-        handleAdditions(update.addu, state.interfaces[i], state.networks[i]);
-        setActiveItem(state.interfaces[i], state.networks[i], state.active[i]);
-        // await handlePreviews(state.networks[i], previews, state.delay);
-        handleMoves(update.movu, state.networks[i]);
+        delGraphs(update.delu, state.interfaces[i], state.networks[i]);
+        addGraphs(update.addu, state.interfaces[i], state.networks[i]);
+        // Sets the active item on the front display.
+        setActive(state.interfaces[i], state.networks[i], state.active[i]);
+        moveGraphs(update.movu, state.networks[i]);
     });
 
     await Promise.all(promises);
 }
 
-export function updateFrame(DOM: DOM, state: LTState, newData: LTData) {
-    const newPreviews: LTId[][] = newData.previews.slice(state.frame);
-    const newUpdates: LTUpdate[][] = newData.updates.slice(state.frame);
+export function createUpdate(prevStates: Py_CFGStatefulGraph[], currStates: Py_CFGStatefulGraph[]): Ts_Update {
+    let addu: Ts_Add = {};
+    let movu: Ts_Mov = {};
+    let delu: Ts_Del = {};
 
-    for (let i = 0; i < newUpdates.length; i++) {
-        const updates = newUpdates[i];
+    const min_len = Math.min(prevStates?.length || 0, currStates.length);
 
-        const currLength = updates.length;
-        const prevLength = state.networks.length;
+    for (let i = 0; i < min_len; i++) {
+        const [prevState, currState] = [prevStates[i], currStates[i]];
 
-        if (prevLength === 0) {
-            initializeLayout(DOM, state, currLength);
+        if (JSON.stringify(prevState) !== JSON.stringify(currState)) {
+            if (JSON.stringify(prevState.graph) !== JSON.stringify(currState.graph)) {
+                if (!prevState.state || !currState.state)
+                    throw Error(`Invalid states for either ${prevState} or ${currState}.`);
+
+                movu[i] = { "from": prevState.state, "to": currState.state };
+            }
+            else {
+                delu[i] = prevState.graph;
+                addu[i] = currState.graph;
+
+                if (!currState.state)
+                    throw Error(`Invalid state for ${currState}.`);
+
+                movu[i] = { "from": null, "to": currState.state };
+            }
+        }
+        else {
+            if (!prevState.state || !currState.state)
+                throw Error(`Invalid states for either ${prevState} or ${currState}.`);
+
+            movu[i] = { "from": prevState.state, "to": currState.state };
+        }
+    }
+
+    // Handle deletions.
+    if ((prevStates?.length || 0) > currStates.length) {
+        for (let i = min_len; i < prevStates.length; i++) {
+            const prevState = prevStates[i];
+
+            delu[i] = prevState.graph;
+
+            if (!prevState.state) {
+                throw Error(`Invalid state for ${prevState}.`);
+            }
+
+            movu[i] = { "from": prevState.state, "to": null };
+        }
+    }
+
+    // Handle additions.
+    if ((prevStates?.length || 0) < currStates.length) {
+        for (let i = min_len; i < currStates.length; i++) {
+            const currState = currStates[i];
+
+            addu[i] = currState.graph;
+
+            if (!currState.state) {
+                throw Error(`Invalid state for ${currState}.`);
+            }
+
+            movu[i] = { "from": null, "to": currState.state };
+        }
+    }
+
+    return { "addu": addu, "movu": movu, "delu": delu };
+}
+
+export function updateFrame(DOM: DOM, state: Ts_State, newData: Py_Data) {
+    const results: Py_CFGGenerationState[][] = newData.results;
+
+
+    for (let i = state.frame; i < results.length; i++) {
+        const prevResults = results[i - 1];
+        const nextResults = results[i];
+
+        // [NOTE] If there is an increase of states within an ambiguous node, updates from the FIRST
+        // current node to the rest of nodes are created.
+        const updates = nextResults.map((nextStates, i) =>
+            createUpdate(prevResults?.[i] ?? prevResults?.[0], nextStates)
+        );
+
+        const nextLength = updates.length;
+        const currLength = state.networks.length;
+
+        if (currLength === 0) {
+            initializeLayout(DOM, state, nextLength);
         } else {
             // If `(currLength - prevLength) != 0` means either (1) we've got an ambiguity and we've 
-            // got to render every possible graph, or (2) we've come from one and we've got to render the chosen graph.
+            // got to render every possible graph, or (2) we've come from one and we've got to render
+            // the chosen graph.
             // If `(currLength - prevLength) == 0` means we've got a (chosen) subgraph of ambiguities
             // from the original graphs.
-            updateLayout(DOM, state, prevLength, updates);
+            updateLayout(DOM, state, nextLength);
         }
 
-        updateGraphs(state, updates, newPreviews[i]);
+        updateGraphs(state, updates);
     }
 
     // Update state.
     state.response.data = newData;
-    state.frame = newData.updates.length;
+    state.frame = newData.results.length;
 
     DOM.display.frameCounter.textContent = `Frame ${state.frame}/${state.frame}`;
 

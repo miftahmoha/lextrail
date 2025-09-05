@@ -1,7 +1,8 @@
-import { Network, VisNet, LTNetwork, LTUpdate, LTEdge, LTInterface, LTState } from './types';
-import { moveNetwork, referNetwork, cloneContainer, Counter } from './helpers';
+import { Network } from "vis";
+import { moveNetwork, referNetwork, cloneContainer } from './helpers';
 import { DOM } from './interface';
 import { VIS_MAIN_OPTIONS, VIS_SIDE_OPTIONS } from './render'
+import { Ts_Interface, Ts_State } from './types';
 
 function createSidebarElement(index: number): HTMLDivElement {
 	const sidebarItems = document.createElement('div');
@@ -17,7 +18,7 @@ function createFrontElement(index: number): HTMLDivElement {
 	return frontItem;
 }
 
-export function initializeLayout(DOM: DOM, state: LTState, length: number): void {
+export function initializeLayout(DOM: DOM, state: Ts_State, length: number): void {
 	// Initialize state arrays
 	state.networks = Array.from({ length }, () => ({
 		front: null,
@@ -40,7 +41,7 @@ export function initializeLayout(DOM: DOM, state: LTState, length: number): void
 	}
 }
 
-export function removeInterface(DOM: DOM, state: LTState, index: number): void {
+export function removeInterface(DOM: DOM, state: Ts_State, index: number): void {
 	const interface_ = state.interfaces[index];
 	if (!interface_) {
 		throw Error("Deleting a non-existant interface.");
@@ -66,7 +67,7 @@ export function removeInterface(DOM: DOM, state: LTState, index: number): void {
 	state.active.splice(index, 1);
 }
 
-export function removeNetwork(state: LTState, index: number): void {
+export function removeNetwork(state: Ts_State, index: number): void {
 	const network = state.networks[index];
 	if (!network) {
 		throw new Error("Deleting a non-existent network.");
@@ -89,12 +90,12 @@ export function removeNetwork(state: LTState, index: number): void {
 	state.networks.splice(index, 1);
 }
 
-export function removePlaceholders(DOM: DOM, state: LTState, index: number): void {
+export function removePlaceholders(DOM: DOM, state: Ts_State, index: number): void {
 	removeNetwork(state, index);
 	removeInterface(DOM, state, index);
 }
 
-function cloneInterface(DOM: DOM, state: LTState, index: number): LTInterface {
+function cloneInterface(DOM: DOM, state: Ts_State, index: number): Ts_Interface {
 	const interface_ = state.interfaces[index];
 	if (!interface_) {
 		throw Error("Cloning a non-existant interface.");
@@ -130,7 +131,7 @@ function cloneInterface(DOM: DOM, state: LTState, index: number): LTInterface {
 	};
 }
 
-function cloneNetwork(state: LTState, interfaceClone: LTInterface, index: number) {
+function cloneNetwork(state: Ts_State, interfaceClone: Ts_Interface, index: number) {
 	const network = state.networks[index];
 	if (!network) {
 		throw new Error("Cloning a non-existent network.");
@@ -172,7 +173,7 @@ function cloneNetwork(state: LTState, interfaceClone: LTInterface, index: number
 	};
 }
 
-export function clonePlaceholders(DOM: DOM, state: LTState, index: number): void {
+export function clonePlaceholders(DOM: DOM, state: Ts_State, index: number): void {
 	const clonedInterface = cloneInterface(DOM, state, index);
 	state.interfaces.push(clonedInterface);
 
@@ -182,57 +183,18 @@ export function clonePlaceholders(DOM: DOM, state: LTState, index: number): void
 	state.active.push([]);
 }
 
-function getChosenIndex(moves: Record<number, LTEdge>, networks: LTNetwork[]): number {
-	const maxKey = Math.max(...Object.keys(moves).map(Number));
+export function updateLayout(DOM: DOM, state: Ts_State, nextLength: number): void {
+	const currLength = state.networks.length;
 
-	// [TODO] Check if TS will return the empty string as `NULL` from Python server.
-	// [NOTE] An empty string is considered false in TypeScript.
-	let previousId: string | undefined;
-	for (let key = maxKey; key >= 0; key--) {
-		const move = moves[key];
-		if (move?.from) {
-			previousId = move.from;
-			break;
+	const offset = nextLength - currLength;
+	if (offset > 0) {
+		for (let i = 0; i < offset; i++) {
+			clonePlaceholders(DOM, state, 0);
 		}
 	}
-
-	if (!previousId) {
-		throw new Error("No node has been moved from a valid source.");
-	}
-
-	for (let i = 0; i < networks.length; i++) {
-		const graph = networks[i].sides.at(-1) as VisNet;
-
-		const highlightedNodes = graph.body.data.nodes.get({
-			filter: (node) => {
-				if (!node.color || typeof node.color === 'string') return false;
-				return node.color.background === '#06b6d4' && node.color.border === '#06b6d4';
-			}
-		});
-
-		const lastHighlightedNode = highlightedNodes[0];
-		if (lastHighlightedNode && previousId === lastHighlightedNode.id) {
-			return i;
+	else if (offset < 0) {
+		for (let i = nextLength; i < currLength; i++) {
+			removePlaceholders(DOM, state, i);
 		}
 	}
-
-	throw new Error("No matching highlighted node found in any network.");
-}
-
-export function updateLayout(DOM: DOM, state: LTState, prevLength: number, updates: LTUpdate[]): void {
-	const chosenIndices = updates.map(update =>
-		getChosenIndex(update.movu, state.networks)
-	);
-
-	for (const [key, count] of Object.entries(Counter(chosenIndices, prevLength - 1))) {
-		const index = parseInt(key);
-
-		if (count === 0) {
-			removePlaceholders(DOM, state, index);
-		} else if (count > 1) {
-			for (let i = 0; i < count - 1; i++) {
-				clonePlaceholders(DOM, state, index);
-			}
-		}
-	};
 }
