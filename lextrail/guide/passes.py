@@ -3,12 +3,11 @@ import warnings
 from collections import deque
 from copy import deepcopy
 
-from lextrail.base import OrderedSet, Symbol, SymbolGraph
+from lextrail.base import Symbol, SymbolGraph
 from lextrail.build.passes import _split_symbols
-from lextrail.exceptions import InfiniteLoop, InvalidGrammar, SymbolNotFound
+from lextrail.exceptions import InfiniteLoop, InvalidGrammar
 from lextrail.helpers import (
-    _fetch_non_terminal_from_content_in_graph,
-    _fetch_symbol_predecessors_in_tree,
+    bfs,
     _is_escaped,
 )
 
@@ -20,10 +19,10 @@ def _is_not_valid_rule_name(rule: str):
 
 
 def _split_cfg_grammar(grammar: str) -> list[str]:
+    rules = []
+    current = []
     in_quote = False
     in_regex = False
-    rules: list[str] = []
-    current: list[str] = []
     i = 0
 
     while i < len(grammar):
@@ -105,22 +104,38 @@ def _divide_cfg_grammar_into_rules(grammar: str) -> dict[str, str]:
 """
 
 
-def dfs(symbol_graph: SymbolGraph, start: OrderedSet[Symbol]) -> list[Symbol]:
-    visited: list[Symbol] = []
+def is_not_escapable_from_infinite_loop(
+    symbol_graph: SymbolGraph, loop_content: str
+) -> list[Symbol]:
+    visited = []
+    queue = deque(symbol_graph.initials)
 
-    stack = deque()  # type: ignore
-    stack.extend(list(start))
+    while queue:
+        vertex = queue.popleft()
 
-    while stack:
-        vertex = stack.pop()
+        # If the vertex is a `infinite` symbol, then it means the (infinite) path is closed.
+        if vertex.content == loop_content:
+            continue
+
+        # If not, we'll do a DFS/BFS traversal starting at the vertex, it means either
+        # (1) there aren't any infinite nodes, thus the path is open and an escape exists,
+        # or (2) there are some `infinite` nodes and we can't make a conclusion. In such case,
+        # we go to the next nodes and repeat.
+        visited_at_vertex = bfs(symbol_graph, [vertex])
+
+        if not any(
+            symbol for symbol in visited_at_vertex if symbol.content == loop_content
+        ):
+            return False
+
         if vertex not in visited:
             visited.append(vertex)
-            stack.extend(symbol_graph.tree[vertex])
+            queue.extend(symbol_graph.tree[vertex])
 
-    return visited
+    return True
 
 
-def _check_for_potential_infinite_loops(
+def check_for_potential_infinite_loops(
     rule_name: str, rule_definition: str, symbol_graph: SymbolGraph
 ):
     is_loop = rule_name in _split_symbols(rule_definition)
@@ -130,59 +145,7 @@ def _check_for_potential_infinite_loops(
             f"A potential loop of non-terminal symbols exists in {rule_name}: {rule_definition}."
         )
 
-        loop_symbols = _fetch_non_terminal_from_content_in_graph(
-            symbol_graph, rule_name
-        )
-
-        for loop_symbol in loop_symbols:
-            if _is_no_escape_from_infinite_loop(symbol_graph, loop_symbol):
-                raise InfiniteLoop(
-                    f"An infinite loop of non-terminal symbols `{rule_name} -> {rule_name}` is found in {rule_name}: {rule_definition}."
-                )
-
-
-def _is_no_escape_from_infinite_loop(symbol_graph: SymbolGraph, symbol_inf: Symbol):
-    # Passing by value, not by reference.
-    symbol_graph_copy: SymbolGraph = deepcopy(symbol_graph)
-
-    is_no_escape: bool = True
-
-    def _recurse_escape(symbol_graph: SymbolGraph, current_symbol: Symbol):
-        nonlocal is_no_escape
-        predecessors: OrderedSet = OrderedSet([])
-
-        try:
-            predecessors.extend(
-                _fetch_symbol_predecessors_in_tree(symbol_graph.tree, current_symbol)
+        if is_not_escapable_from_infinite_loop(symbol_graph, rule_name):
+            raise InfiniteLoop(
+                f"An infinite loop of non-terminal symbols `{rule_name} -> {rule_name}` is found in {rule_name}: {rule_definition}."
             )
-        except SymbolNotFound:
-            # [NOTE] Deals with a case when we reach the beggining of a subgraph,
-            # we search if there are some `escapes` in other subgraphs.
-            if current_symbol in symbol_graph.initials and current_symbol != symbol_inf:
-                predecessors.extend(symbol_graph.initials)
-                predecessors.discard(current_symbol)
-                visited = dfs(symbol_graph, predecessors)
-
-                if not visited:
-                    return
-
-                if symbol_inf not in visited:
-                    is_no_escape = False
-            else:
-                return
-
-        for predecessor in predecessors:
-            successors = symbol_graph_copy.tree[predecessor]
-            successors.discard(current_symbol)
-            visited = dfs(symbol_graph, successors)
-
-            if not visited:
-                _recurse_escape(symbol_graph, predecessor)
-                continue
-
-            if symbol_inf not in visited:
-                is_no_escape = False
-
-    _recurse_escape(symbol_graph_copy, symbol_inf)
-
-    return is_no_escape
