@@ -1,17 +1,17 @@
-from typing import Optional
-from collections import defaultdict
 import uuid
+from collections import defaultdict
+from typing import Dict, List, Optional, cast
 
 from lextrail.base import CFGGenerationState, CFGStatefulGraph, Symbol, SymbolType
-from lextrail.build.passes import _build_symbol_from_string
+from lextrail.build.passes import build_symbol_from_content
 from lextrail.exceptions import CombineError
 
-# Aliasing.
+# [TODO] Create a character type with runtime validation.
 char = str
 
 
 class AssemblyNode:
-    def __init__(self, content: str):
+    def __init__(self, content: str = ""):
         self.content = content
         self.id = uuid.uuid4()
 
@@ -25,20 +25,32 @@ class AssemblyNode:
 
         return (self.content == other.content) and (self.id == other.id)
 
+    def __bool__(self):
+        return bool(self.content)
+
+
+AssemblyTree = Dict[AssemblyNode, List[AssemblyNode]]
+
+
+class AssemblyState:
+    def __init__(self, node: Optional[AssemblyNode] = None, accu: str = ""):
+        self.node = node
+        self.accu = accu
+
+    def __bool__(self):
+        return bool(self.node) and bool(self.accu)
+
 
 class AssemblyGraph:
     def __init__(
         self,
-        *,
-        initials: list[AssemblyNode],
-        tree: dict[AssemblyNode, list[AssemblyNode]],
-        finals: list[AssemblyNode],
-        states: dict[AssemblyNode, str] = {},
+        initials: List[AssemblyNode] = [],
+        tree: AssemblyTree = {},
+        finals: List[AssemblyNode] = [],
     ):
         self.initials = initials
         self.tree = tree
         self.finals = finals
-        self.states = states
 
     def __eq__(self, other) -> bool:
         if isinstance(other, AssemblyGraph):
@@ -48,163 +60,123 @@ class AssemblyGraph:
     def __bool__(self) -> bool:
         return bool(self.initials) and bool(self.tree) and bool(self.finals)
 
-    def copy(self):
-        return AssemblyGraph(
-            initials=self.initials,
-            tree=self.tree,
-            finals=self.finals,
-            states=self.states.copy(),
-        )
 
+def build_assembly_graph(vocabulary: list[str]) -> AssemblyGraph:
+    initials: List[AssemblyNode] = []
+    tree: AssemblyTree = defaultdict(list)
+    finals: List[AssemblyNode] = []
 
-def _fetch_assemble_node_from_content(
-    assembly_nodes: list[AssemblyNode], character: char
-) -> Optional[AssemblyNode]:
-    return next((node for node in assembly_nodes if node.content == character), None)
-
-
-def _assemble_graph(vocabulary: list[str]) -> AssemblyGraph:
-    initials: list[AssemblyNode] = []
-    tree: dict[AssemblyNode, list[AssemblyNode]] = defaultdict(list)
-    finals: list[AssemblyNode] = []
-
-    is_common_subgraph: bool = False
     for word in vocabulary:
-        i = 0
-        wordlist = list(word)
+        current_node = AssemblyNode()
 
-        while i < len(wordlist):
-            character = wordlist[i]
+        for i, char in enumerate(word):
+            candidates = initials if i == 0 else tree[current_node]
 
-            if i == 0:
-                if token_node := _fetch_assemble_node_from_content(initials, character):
-                    previous = token_node
-                    is_common_subgraph = True
-                else:
-                    previous = AssemblyNode(character)
-                    initials.append(previous)
-                i += 1
-                continue
+            existing_node = next(
+                (node for node in candidates if node.content == char), None
+            )
+            if existing_node:
+                current_node = existing_node
+            else:
+                new_node = AssemblyNode(char)
+                candidates.append(new_node)
+                current_node = new_node
 
-            if is_common_subgraph:
-                if token_node := _fetch_assemble_node_from_content(tree[previous], character):  # type: ignore
-                    previous = token_node
-                else:
-                    next = AssemblyNode(character)
-                    tree[previous].append(next)  # type: ignore
-                    previous = next
-                    is_common_subgraph = False
-                i += 1
-                continue
-
-            next = AssemblyNode(character)
-            tree[previous].append(next)  # type: ignore
-            previous = next
-            i += 1
-
-        finals.append(previous)  # type: ignore
+        # Guards against empty words.
+        if current_node:
+            finals.append(current_node)
 
     return AssemblyGraph(initials=initials, tree=tree, finals=finals)
 
 
-def _get_next_assemble_graph(
-    graph: AssemblyGraph, next_terminal: char, _IS_START: bool = False
-) -> tuple[AssemblyGraph, list[str]]:
-
-    assembled: list[str] = []
-
-    if _IS_START and (
-        assemble_node := _fetch_assemble_node_from_content(
-            graph.initials, next_terminal[1:-1]
-        )
-    ):
-        graph.states[assemble_node] = next_terminal[1:-1]
-    else:
-        completed = []
-        for node in graph.states.copy().keys():
-            for next_node in graph.tree[node]:
-                if next_node.content == next_terminal[1:-1]:
-                    graph.states[next_node] = graph.states.pop(node) + next_node.content
-                    if next_node in graph.finals:
-                        completed.append(graph.states[next_node])
-                    break
-            graph.states.pop(node, None)
-
-        assembled.extend(completed)
-
-    return graph, assembled
-
-
-def _extract_single_token_proposal(
-    next_terminals_w_states: dict[Symbol, CFGGenerationState],
-    symbol_next: Symbol,
-    assembled: str,
+def build_assembly_proposal(
+    last_symbol: Symbol,  # [NOTE] They're called `last` for a reason, they're last in the assembly sequence.
+    last_state: CFGGenerationState,
+    assembled_content: str,
 ) -> dict[Symbol, CFGGenerationState]:
-    valid_paths: dict[Symbol, CFGGenerationState] = {}
-
-    if symbol_next.s_type == SymbolType.TERMINAL:
-        combination_symbol = _build_symbol_from_string(
-            '"' + assembled + '"'
-        )  # Adding the `<">..<">` for terminals.
-        # Avoids writing to the reference.
-        combination_state = next_terminals_w_states[symbol_next].copy()
-        # Give `symbol_next`'s connections to `combination_symbol`.
-        # [NOTE] Always going to be so, if a symbol exists in `next_terminals_w_states.keys()`
-        # then it'll have a history.
-        # [NOTE] In case the LLM picks the concatenated symbol,
-        # we search for its corresponding symbol, then search for the next connections.
-        if combination_state:
-            # [NOTE] Modifying a reference, it doesn't really matter that we're referencing `.tree`
-            # (copy depth stops at `.graph`), we don't change `combination_state[-1].graph.tree[symbol_next]`
-            # during the process.
-            combination_state[-1].graph.tree[combination_symbol] = combination_state[
-                -1
-            ].graph.tree[symbol_next]
-        # Add path.
-        valid_paths[combination_symbol] = combination_state
-    else:
+    if last_symbol.s_type != SymbolType.TERMINAL:
         raise CombineError(
             "Expected `SymbolType.TERMINAL` got `{symbol_prev.s_type}` instead."
         )
 
-    return valid_paths
+    assembled_symbol = build_symbol_from_content(f'"{assembled_content}"')
+
+    # [NOTE] We add a connection to the assembled state, a shallow copy is needed.
+    assembled_state = last_state.copy()
+
+    if assembled_state:
+        # (*) Copy tree connections from the last assembled symbol to combined symbol.
+        last_graph = assembled_state[-1].graph
+        last_graph.tree[assembled_symbol] = last_graph.tree[assembled_symbol]
+
+    return {assembled_symbol: assembled_state}
 
 
-def _update_single_token_combinations(
+def update_single_token_combinations(
     guide,
-    graph: AssemblyGraph,
+    assembly_graph: AssemblyGraph,
 ):
     proposals: dict[Symbol, CFGStatefulGraph | CFGGenerationState] = {}
 
     def recurse_update(
         next_terminals_w_states: dict[Symbol, CFGGenerationState],
-        next_graph: AssemblyGraph,
-        _IS_START: bool = False,
+        state: AssemblyState = AssemblyState(),
     ):
         nonlocal proposals
 
         for symbol_next, state_next in next_terminals_w_states.items():
-            current_graph, completed = _get_next_assemble_graph(
-                next_graph.copy(), symbol_next.content, _IS_START=_IS_START
-            )
+            # [TODO][PARALLELISM] Each trajectory could be a core.
+            # Each trajectory should have its own state instance, interference shouldn't happen.
+            current_state = AssemblyState(state.node, state.accu)
 
-            for completion in completed:
-                proposal = _extract_single_token_proposal(
-                    next_terminals_w_states, symbol_next, completion
+            if not current_state:
+                assemble_node = next(
+                    (
+                        candidate
+                        for candidate in assembly_graph.initials
+                        if candidate.content == symbol_next.content[1:-1]
+                    ),
+                    None,
                 )
-                proposals.update(proposal)
 
-            if not current_graph.states:
-                continue
+                if assemble_node is None:
+                    continue
+                else:
+                    current_state.node = assemble_node
+                    current_state.accu = symbol_next.content[1:-1]
+            else:
+                # `mypy` does not reason about the custom implementation of `__bool__` for `AssemblyState`.
+                candidates = assembly_graph.tree.get(
+                    cast(AssemblyNode, current_state.node), []
+                )
 
-            guide._get_next_terminals([symbol_next], [state_next])
-            recurse_update(guide._next_terminals_w_states.copy(), current_graph)
+                assemble_node = next(
+                    (
+                        candidate
+                        for candidate in candidates
+                        if candidate.content == symbol_next.content[1:-1]
+                    ),
+                    AssemblyNode(),
+                )
+                if assemble_node.content == symbol_next.content[1:-1]:
+                    current_state.node = assemble_node
+                    current_state.accu += symbol_next.content[1:-1]
+                else:
+                    continue
 
-    # Get `next_terminals_w_states`.
+                if assemble_node in assembly_graph.finals:
+                    proposal = build_assembly_proposal(
+                        symbol_next, state_next, current_state.accu
+                    )
+                    proposals.update(proposal)
+
+            # [TODO] Turn `get_next_terminals` into one single function.
+            guide.get_next_terminals_temp(symbol_next, state_next)
+            recurse_update(guide._next_terminals_w_states.copy(), current_state)
+
+    # [TODO] Avoid the multiple copies through a more functional approach.
     next_terminals_w_states = guide._next_terminals_w_states.copy()
-    # Run.
-    recurse_update(next_terminals_w_states, graph, _IS_START=True)
-    # Update `cfg_generation_state`.
+    recurse_update(next_terminals_w_states)
     next_terminals_w_states.update(proposals)
 
     return next_terminals_w_states

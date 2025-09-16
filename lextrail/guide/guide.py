@@ -2,7 +2,7 @@ from collections import defaultdict
 from functools import wraps
 from os import getenv
 
-from lextrail.assemble import AssemblyGraph, _update_single_token_combinations
+from lextrail.assemble import AssemblyGraph, update_single_token_combinations
 from lextrail.base import (
     CFGGenerationState,
     CFGStatefulGraph,
@@ -59,7 +59,7 @@ class Guide:
     def __init__(self, definition: str):
         self._built_symbol_graph = build_symbol_graph(definition)
         self._next_terminals_w_states = {}
-        self._token_graphs = AssemblyGraph(initials=[], tree={}, finals=[])
+        self._token_graphs = AssemblyGraph()
         self._backreferences = defaultdict(str)
 
     def backreference(self, chosen_symbols: list[Symbol]):
@@ -228,7 +228,7 @@ class Guide:
         if self._token_graphs:
             # Context avoids affecting the backreferences instead of using a copy of Guide.
             with LTContext(PARSE_BREFS="0"):
-                self._next_terminals_w_states = _update_single_token_combinations(
+                self._next_terminals_w_states = update_single_token_combinations(
                     self, self._token_graphs
                 )
 
@@ -254,7 +254,7 @@ class CFGGuide:
     def __init__(self, cfg_grammar: str):
         self._built_cfg_grammar = build_cfg_grammar_into_symbol_graphs(cfg_grammar)
         self._next_terminals_w_states = {}
-        self._token_graphs = AssemblyGraph(initials=[], tree={}, finals=[])
+        self._token_graphs = AssemblyGraph()
         self._backreferences = defaultdict(lambda: defaultdict(str))
 
     def backreference(
@@ -478,7 +478,7 @@ class CFGGuide:
         if self._token_graphs:
             # Context avoids affecting the backreferences instead of using a copy of CFGGuide.
             with LTContext(PARSE_BREFS="0"):
-                self._next_terminals_w_states = _update_single_token_combinations(
+                self._next_terminals_w_states = update_single_token_combinations(
                     self, self._token_graphs
                 )
 

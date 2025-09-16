@@ -2,14 +2,16 @@ import pytest
 
 from lextrail.assemble import (
     AssemblyGraph,
-    _assemble_graph,
-    _update_single_token_combinations,
+    build_assembly_graph,
+    update_single_token_combinations,
 )
 from lextrail.guide import CFGGuide
 from lextrail.helpers import (
     _extract_content_from_symbols,
     _fetch_terminal_from_content_in_sequence,
 )
+
+
 
 gpt2_vocabulary_subset = [
     "ing",  # Common suffix
@@ -37,7 +39,7 @@ gpt2_vocabulary_subset = [
 
 @pytest.fixture
 def gpt2_vocabulary_subset_as_graphs():
-    return _assemble_graph(gpt2_vocabulary_subset)
+    return build_assembly_graph(gpt2_vocabulary_subset)
 
 
 @pytest.fixture
@@ -56,7 +58,7 @@ def test_cfg_with_uni_level_combination_no_or_uni_choice(
     cfg_object = CFGGuide(cfg_with_uni_level_combination_no_or_uni_choice)
     cfg_object.get_next_terminals()
 
-    next_terminals_w_hist_w_update = _update_single_token_combinations(
+    next_terminals_w_hist_w_update = update_single_token_combinations(
         cfg_object, gpt2_vocabulary_subset_as_graphs
     )
 
@@ -97,7 +99,7 @@ def test_cfg_with_mlt_level_combination_no_or_uni_choice(
     cfg_object = CFGGuide(cfg_with_mlt_level_combination_no_or_uni_choice)
     cfg_object.get_next_terminals()
 
-    next_terminals_w_hist_w_update = _update_single_token_combinations(
+    next_terminals_w_hist_w_update = update_single_token_combinations(
         cfg_object, gpt2_vocabulary_subset_as_graphs
     )
 
@@ -140,7 +142,7 @@ def test_cfg_with_mlt_level_combination_mlt_or_uni_choice(
     cfg_object = CFGGuide(cfg_with_mlt_level_combination_mlt_or_uni_choice)
     cfg_object.get_next_terminals()
 
-    next_terminals_w_hist_w_update = _update_single_token_combinations(
+    next_terminals_w_hist_w_update = update_single_token_combinations(
         cfg_object, gpt2_vocabulary_subset_as_graphs
     )
 
@@ -181,7 +183,7 @@ def test_cfg_with_mlt_level_combination_uni_or_mlt_choice(
     cfg_object = CFGGuide(cfg_with_mlt_level_combination_uni_or_mlt_choice)
     cfg_object.get_next_terminals()
 
-    next_terminals_w_hist_w_update = _update_single_token_combinations(
+    next_terminals_w_hist_w_update = update_single_token_combinations(
         cfg_object, gpt2_vocabulary_subset_as_graphs
     )
 
@@ -230,7 +232,7 @@ test_vocabulary_subset = ["A", "B", "ADE", "BDE", "BCE", "ADEF", "BCEF"]
 
 @pytest.fixture
 def test_vocabulary_subset_as_graphs():
-    return _assemble_graph(test_vocabulary_subset)
+    return build_assembly_graph(test_vocabulary_subset)
 
 
 @pytest.fixture
@@ -255,7 +257,7 @@ def test_cfg_with_mlt_level_combination_mlt_or_mlt_choice(
     cfg_object = CFGGuide(cfg_with_mlt_level_combination_mlt_or_mlt_choice)
     cfg_object.get_next_terminals()
 
-    next_terminals_w_hist_w_update = _update_single_token_combinations(
+    next_terminals_w_hist_w_update = update_single_token_combinations(
         cfg_object, test_vocabulary_subset_as_graphs
     )
 

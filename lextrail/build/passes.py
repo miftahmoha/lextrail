@@ -48,6 +48,30 @@ def _build_symbol_from_string(symbol_str: str) -> Symbol:
 
     return node
 
+def build_symbol_from_content(content: str) -> Symbol:
+    if content.startswith('"') and content.endswith('"'):
+        node = Symbol(content, SymbolType.TERMINAL)
+
+    elif content.startswith("/") and content.endswith("/"):
+        # Check if regex is valid, throw an exception otherwise.
+        _check_if_valid_regex(content[1:-1])
+
+        node = Symbol(content[1:-1], SymbolType.REGEX)
+
+    elif content in "()[]{}<>|*?+":
+        node = Symbol(content, SymbolType.SPECIAL)
+
+    elif content.startswith("\\") and content[1:].isdigit():
+        # [NOTE] Avoids storing results if there are no backreferences. It is
+        # executed after parsing regex expressions.
+        os.environ["PARSE_BREFS"] = "1"
+        node = Symbol(content, SymbolType.REFERENCE)
+
+    else:
+        node = Symbol(content, SymbolType.NON_TERMINAL)
+
+    return node
+
 
 def _is_valid_symbol_syntax(symbol_str: str) -> bool:
     # Special characters REGEX.
