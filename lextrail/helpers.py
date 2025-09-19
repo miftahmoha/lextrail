@@ -1,106 +1,17 @@
 import os
 from collections import defaultdict, deque
-from typing import Union
+from itertools import chain
+from typing import Deque
 
-from lextrail.base import OrderedSet, Symbol, SymbolGraph, SymbolType
+from lextrail.base import Symbol, SymbolGraph, SymbolType
 from lextrail.exceptions import SymbolNotFound
 
 
-def _is_end_def_symbol(symbol: Symbol) -> bool:
+def is_end_def_symbol(symbol: Symbol) -> bool:
     return symbol.content == "END_DEF" and symbol.s_type == SymbolType.SPECIAL
 
 
-def _is_end_def_symbol_in_sequence(
-    sequence: Union[OrderedSet[Symbol], list[Symbol]],
-) -> bool:
-    for symbol in sequence:
-        if _is_end_def_symbol(symbol):
-            return True
-    return False
-
-
-def _fetch_end_def_symbol_in_sequence(
-    sequence: Union[OrderedSet[Symbol], list[Symbol]],
-) -> list[Symbol]:
-    symbols = []
-    for symbol in sequence:
-        if _is_end_def_symbol(symbol):
-            symbols.append(symbol)
-
-    if len(symbols) == 0:
-        raise SymbolNotFound("No `END_DEF` symbol was found.")
-
-    return symbols
-
-
-def _fetch_terminal_from_content_in_sequence(
-    sequence: Union[OrderedSet[Symbol], list[Symbol]], content: str
-) -> list[Symbol]:
-    symbols = []
-    for symbol in sequence:
-        if symbol.s_type == SymbolType.TERMINAL and symbol.content == content:
-            symbols.append(symbol)
-
-    if len(symbols) == 0:
-        raise SymbolNotFound(f"No terminal symbol matching {content} was found.")
-
-    return symbols
-
-
-def _fetch_non_terminal_from_content_in_graph(
-    symbol_graph: SymbolGraph, content: str
-) -> list[Symbol]:
-    symbols = []
-
-    for symbol_initial in symbol_graph.initials:
-        if (
-            symbol_initial.s_type == SymbolType.NON_TERMINAL
-            and symbol_initial.content == content
-        ):
-            symbols.append(symbol_initial)
-
-    for symbol_successors in symbol_graph.tree.values():
-        for symbol_successor in symbol_successors:
-            if (
-                symbol_successor.s_type == SymbolType.NON_TERMINAL
-                and symbol_successor.content == content
-                and symbol_successor not in symbols
-            ):
-                symbols.append(symbol_successor)
-
-    if len(symbols) == 0:
-        raise SymbolNotFound(f"No Symbol matching {content} was found.")
-
-    return symbols
-
-
-def _fetch_symbol_predecessors_in_tree(
-    tree: dict[Symbol, OrderedSet[Symbol]], symbol: Symbol
-) -> list[Symbol]:
-    symbol_predecessors = []
-    for symbol_parent, symbol_children in tree.items():
-        if symbol in symbol_children:
-            symbol_predecessors.append(symbol_parent)
-
-    if len(symbol_predecessors) == 0:
-        raise SymbolNotFound(f"No symbol predecessor for {symbol.content} was found.")
-
-    return symbol_predecessors
-
-
-def _discard_single_nodes_from_tree(
-    tree: dict[Symbol, OrderedSet[Symbol]],
-) -> dict[Symbol, OrderedSet[Symbol]]:
-    tree_copy = tree.copy()
-
-    for symbol_key in tree.keys():
-        if not tree[symbol_key]:
-            del tree_copy[symbol_key]
-
-    return tree_copy
-
-
-def _is_escaped(string: str, index: int) -> bool:
+def is_escaped(string: str, index: int) -> bool:
     if index < 0:
         return False
     j = 0
@@ -108,6 +19,66 @@ def _is_escaped(string: str, index: int) -> bool:
         j += 1
         index -= 1
     return j % 2 != 0
+
+
+def contains_end_def_symbol(symbols: list[Symbol]) -> bool:
+    return any(is_end_def_symbol(symbol) for symbol in symbols)
+
+
+def get_end_def_symbols(symbols: list[Symbol]) -> list[Symbol]:
+    symbols = [symbol for symbol in symbols if is_end_def_symbol(symbol)]
+
+    if not symbols:
+        raise SymbolNotFound("No `END_DEF` symbol was found.")
+
+    return symbols
+
+
+def get_terminal_symbols(symbols: list[Symbol], content: str) -> list[Symbol]:
+    symbols = [
+        symbol
+        for symbol in symbols
+        if symbol.s_type == SymbolType.TERMINAL and symbol.content == content
+    ]
+
+    if len(symbols) == 0:
+        raise SymbolNotFound(f"No terminal symbol matching {content} was found.")
+
+    return symbols
+
+
+def get_symbol_predecessors(
+    symbol_tree: dict[Symbol, list[Symbol]], symbol: Symbol
+) -> list[Symbol]:
+    predecessors = [
+        parent for parent, children in symbol_tree.items() if symbol in children
+    ]
+
+    if len(predecessors) == 0:
+        raise SymbolNotFound(f"No symbol predecessor for {symbol.content} was found.")
+
+    return predecessors
+
+
+def remove_single_nodes(
+    symbol_tree: dict[Symbol, list[Symbol]],
+) -> dict[Symbol, list[Symbol]]:
+    return defaultdict(list, ((k, v) for k, v in symbol_tree.items() if v))
+
+
+def bfs(symbol_graph: SymbolGraph, start: list[Symbol]) -> list[Symbol]:
+    visited = []
+
+    queue: Deque[Symbol] = deque()
+    queue.extend(start)
+
+    while queue:
+        vertex = queue.popleft()
+        if vertex not in visited:
+            visited.append(vertex)
+            queue.extend(symbol_graph.tree[vertex])
+
+    return visited
 
 
 class LTContext:
@@ -131,22 +102,7 @@ class LTContext:
 """
 
 
-def bfs(symbol_graph: SymbolGraph, start: OrderedSet[Symbol]) -> list[Symbol]:
-    visited = []
-
-    queue = deque()  # type: ignore
-    queue.extend(list(start))
-
-    while queue:
-        vertex = queue.popleft()
-        if vertex not in visited:
-            visited.append(vertex)
-            queue.extend(symbol_graph.tree[vertex])
-
-    return visited
-
-
-def _get_symbols_from_generated_symbol_graph(
+def get_ordered_symbols_from_symbol_graph(
     symbol_graph: SymbolGraph,
 ) -> dict[str, Symbol]:
     symbols: dict[str, Symbol] = {}
@@ -163,43 +119,34 @@ def _get_symbols_from_generated_symbol_graph(
     return symbols
 
 
-def _extract_content_from_symbols(symbols: list[Symbol]) -> list[str]:
-    content: list[str] = []
-
-    for symbol in symbols:
-        content.append(symbol.content)
-
-    return content
-
-
-def _extract_backreference_indices(symbols: list[str]) -> list[int]:
-    def _extract_backreference_indices_from_regex(regex: str):
-        indices: list[int] = []
-        index = ""
-
+def extract_backreference_indices(symbols: list[str]) -> list[int]:
+    def get_regex_reference_indices(regex: str):
+        indices = []
         i = 0
+
         while i < len(regex):
             if (
-                regex[i] == "\\"
-                and not _is_escaped(regex, i - 1)
+                i + 1 < len(regex)
+                and regex[i] == "\\"
+                and not is_escaped(regex, i - 1)
                 and regex[i + 1].isdigit()
             ):
                 i += 1
+                start = i
+
                 while regex[i].isdigit():
-                    index += regex[i]
                     i += 1
 
-                indices.append(int(index))
-                index = ""
+                indices.append(int(regex[start:i]))
 
             i += 1
 
         return indices
 
-    indices: list[int] = []
-
-    for symbol in symbols:
-        if symbol.startswith("/") and symbol.endswith("/"):
-            indices.extend(_extract_backreference_indices_from_regex(symbol))
-
-    return indices
+    return list(
+        chain.from_iterable(
+            get_regex_reference_indices(symbol)
+            for symbol in symbols
+            if symbol.startswith("/") and symbol.endswith("/")
+        )
+    )
