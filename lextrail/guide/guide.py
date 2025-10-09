@@ -1,512 +1,245 @@
-from collections import defaultdict
-from functools import wraps
+from collections import defaultdict, deque
+from copy import copy
+from dataclasses import dataclass, field
+from itertools import chain
 from os import getenv
+from typing import Deque, Generator
 
-from lextrail.assemble import AssemblyGraph, update_single_token_combinations
-from lextrail.base import (
-    CFGGenerationState,
-    CFGStatefulGraph,
-    LTDeque,
-    Symbol,
-    SymbolGraph,
-    SymbolType,
-)
+from lextrail.assemble import ASMGraph, build_asm_graph
+from lextrail.base import Symbol, SymbolGraph, SymbolType
 from lextrail.build import build_symbol_graph
 from lextrail.exceptions import ParsingError
 from lextrail.guide.passes import (
-    _check_for_potential_infinite_loops,
-    _divide_cfg_grammar_into_rules,
+    check_for_potential_infinite_loops,
+    divide_cfg_into_rules,
 )
-from lextrail.helpers import LTContext, _is_end_def_symbol
+from lextrail.helpers import is_end_def_symbol
 
 
-def build_cfg_grammar_into_symbol_graphs(cfg_grammar: str) -> dict[str, SymbolGraph]:
-    built_cfg_grammar_dict: dict[str, SymbolGraph] = {}
+def build_cfg_graphs(cfg_grammar: str) -> dict[str, SymbolGraph]:
+    cfg_rules = divide_cfg_into_rules(cfg_grammar)
+    cfg_graphs = {
+        symbol: build_symbol_graph(graph) for symbol, graph in cfg_rules.items()
+    }
 
-    divided_cfg_grammar_dict = _divide_cfg_grammar_into_rules(cfg_grammar)
-
-    for symbol_name, symbol_def in divided_cfg_grammar_dict.items():
-        built_cfg_grammar_dict[symbol_name] = build_symbol_graph(symbol_def)
-
+    # [TODO] Make it optional?
+    for symbol_name, symbol_def in cfg_rules.items():
         # [NOTE] Check for potential infinite loops in the CFG.
         # (1) WARNING: There is an infinite loop but there exists a path to escape to it.
         # (2) EXCEPTION: There is an infinite loop but there is no escape.
-        _check_for_potential_infinite_loops(
-            symbol_name, symbol_def, built_cfg_grammar_dict[symbol_name]
+        check_for_potential_infinite_loops(
+            symbol_name, symbol_def, cfg_graphs[symbol_name]
         )
 
-    return built_cfg_grammar_dict
+    return cfg_graphs
 
 
-def clear_dict_before_call(dict_name: str):
-    def decorator(func):
-        @wraps(func)
-        def wrapper(self, *args, **kwargs):
-            getattr(self, dict_name).clear()
-            return func(self, *args, **kwargs)
+@dataclass(slots=True)
+class TrailGraph:
+    graph: SymbolGraph
+    label: str
+    state: Symbol = Symbol()
 
-        return wrapper
+    def serialize(self):
+        return {
+            "graph": self.graph.serialize(),
+            "state": self.state.serialize() if self.state else "",
+            "label": self.label,
+        }
 
-    return decorator
+
+@dataclass(slots=True)
+class TrailProposal:
+    state: Deque[TrailGraph]
+    symbol: Symbol = Symbol()
+
+    def __bool__(self):
+        return bool(self.symbol) and bool(self.state)
 
 
-class Guide:
-    _built_symbol_graph: SymbolGraph
-    _next_terminals_w_states: dict[Symbol, CFGStatefulGraph]
-    _token_graphs: AssemblyGraph
-    _backreferences: dict[int, str]
+@dataclass(slots=True)
+class Trail:
+    graphs: dict[str, SymbolGraph]
+    backrefs: dict[str, dict[int, str]] = field(
+        default_factory=lambda: defaultdict(lambda: defaultdict(str))
+    )
+    assembler: ASMGraph = field(default_factory=lambda: ASMGraph())
 
-    def __init__(self, definition: str):
-        self._built_symbol_graph = build_symbol_graph(definition)
-        self._next_terminals_w_states = {}
-        self._token_graphs = AssemblyGraph()
-        self._backreferences = defaultdict(str)
 
-    def backreference(self, chosen_symbols: list[Symbol]):
-        # [TODO] Add tests for `extract_indices`.
-        def extract_indices(start_key, dictionary):
-            result = [start_key]
-            current_key = start_key
+def trail_expr(expression: str, vocabulary: list[str] = []):
+    return Trail(
+        graphs=build_cfg_graphs(f"start: {expression}"),
+        assembler=build_asm_graph(vocabulary),
+    )
 
-            # Start with value one less than initial.
-            current_value = dictionary[start_key] - 1
 
-            while current_value >= 1:
-                # Find largest key less than current_key with current_value.
-                next_key = max(
-                    (
-                        k
-                        for k in dictionary.keys()
-                        if k < current_key and dictionary[k] == current_value
-                    ),
-                    default=None,
-                )
+def trail_regex(regex: str, vocabulary: list[str] = []):
+    return Trail(
+        graphs=build_cfg_graphs(f"start: /{regex}/"),
+        assembler=build_asm_graph(vocabulary),
+    )
 
-                if next_key is None:
-                    break
 
-                result.append(next_key)
-                current_key = next_key
-                # Decrease the value we're looking for.
-                current_value -= 1
+def trail_cfg(grammar: str, vocabulary: list[str] = []):
+    return Trail(
+        graphs=build_cfg_graphs(grammar), assembler=build_asm_graph(vocabulary)
+    )
 
-            return result
 
-        chosen_symbol = chosen_symbols[0]
+def get_next_proposal(
+    trail: Trail, proposal: TrailProposal
+) -> Generator[TrailProposal, None, None]:
+    curr_state, curr_symbol = proposal.state, proposal.symbol
+    curr_graph = curr_state[-1].graph
 
-        # END_DEF can be given as choice symbol.
-        if _is_end_def_symbol(chosen_symbol):
+    if int(getenv("PARSE_BREFS", 0)) and (curr_symbol.s_type == SymbolType.TERMINAL):
+        capture_backrefs(trail, proposal)
+
+    next_symbols = curr_graph.tree[curr_symbol] if curr_symbol else curr_graph.initials
+
+    if not next_symbols:
+        curr_state.pop()
+
+        # Reaches the end of the path.
+        if not curr_state:
             return
 
-        count = chosen_symbol.s_metadata["_ORDER"]
+        # Last symbol where we left.
+        curr_symbol = curr_state[-1].state
 
-        indices = extract_indices(
-            count, self._built_symbol_graph.metadata["_COUNT_TO_DEPTH"]
+        yield from get_next_proposal(
+            trail, TrailProposal(symbol=curr_symbol, state=curr_state)
         )
 
-        for index in indices:
-            self._backreferences[index] += chosen_symbol.content[1:-1]
+    for next_symbol in next_symbols:
+        if next_symbol.s_type in [
+            SymbolType.TERMINAL,
+            SymbolType.REGEX,
+        ] or is_end_def_symbol(next_symbol):
+            # A shallow copy is needed for each proposal, in order to avoid overwriting a state
+            # through other execution paths.
+            next_state = deque([copy(state) for state in curr_state])
+            next_state[-1].state = next_symbol
 
-    @clear_dict_before_call("_next_terminals_w_states")
-    def _get_next_terminals(
-        self,
-        chosen_symbols: list[Symbol] = [],
-        chosen_states: list[CFGStatefulGraph] = [],
-    ):
-        if isinstance(chosen_symbols, Symbol):
-            chosen_symbols = [chosen_symbols]
+            yield TrailProposal(symbol=next_symbol, state=next_state)
 
-        if isinstance(chosen_states, CFGStatefulGraph):
-            chosen_states = [chosen_states]
+        if next_symbol.s_type == SymbolType.NON_TERMINAL:
+            # A shallow copy is needed for each proposal, in order to avoid overwriting a state
+            # through other execution paths.
+            next_state = deque([copy(state) for state in curr_state])
+            next_state[-1].state = next_symbol
 
-        # Type of the symbols must be TERMINAL, REGEX or END_DEF.
-        if not all(
-            x.s_type in [SymbolType.TERMINAL, SymbolType.REGEX, SymbolType.REFERENCE]
-            or _is_end_def_symbol(x)
-            for x in chosen_symbols
-        ):
-            raise ParsingError("Symbols must be of type TERMINAL, REGEX or REFERENCE.")
+            # Reaching a `NON_TERMINAL` means adding a layer to the stack.
+            next_layer = TrailGraph(
+                graph=trail.graphs[next_symbol.content],
+                label=next_symbol.content,
+            )
+            next_state.append(next_layer)
 
-        # Content of the symbols must be the same.
-        if not all(x.content == chosen_symbols[0].content for x in chosen_symbols):
-            raise ParsingError("Ambiguous symbols must have identical content.")
+            yield from get_next_proposal(trail, TrailProposal(state=next_state))
 
-        if not chosen_states:
-            if not chosen_symbols:
-                # Turning the symbol graph that'll be added to the stack
-                # into a stateful object `CFGStatefulGraph`.
-                start = CFGStatefulGraph(self._built_symbol_graph, "start")
-                self._get_next_terminals(chosen_states=[start])
-                return
-            else:
+        if next_symbol.s_type == SymbolType.REFERENCE:
+            # A reference must be a unique proposal.
+            if len(next_symbols) > 1:
+                raise ParsingError("Reference symbol is not unique.")
+
+            index = int(next_symbol.content[1:])
+            reference = trail.backrefs[curr_state[-1].label]
+
+            if (index + 1) not in reference.keys():
                 raise ParsingError(
-                    "`CFGGenerationState` is empty while `chosen_symbols` is not."
+                    f"Invalid backreference `\\{index}`: Missing or contains non-terminal symbols."
                 )
 
-        # Poping the last graphs.
-        last_visit_graphs = [chosen_state.graph for chosen_state in chosen_states]
-
-        if chosen_symbols:
-            if int(getenv("PARSE_BREFS", 1)):
-                # Backreference update.
-                self.backreference(chosen_symbols)
-            # Update the state for `CFGStatefulGraph` to the terminal(s) symbol(s) chosen by the LLM.
-            for chosen_state, chosen_symbol in zip(chosen_states, chosen_symbols):
-                chosen_state.state = chosen_symbol
-            # Get the next sequences.
-            next_sequences = [
-                last_visit_graph.tree[chosen_symbol]
-                for last_visit_graph, chosen_symbol in zip(
-                    last_visit_graphs, chosen_symbols
-                )
-            ]
-
-        # [NOTE] Sometimes `next_symbols` is returned empty, this can happen when:
-        # (1) You pop from the stack, and the place where you land was a `END-OF-DEFINITON`
-        # non-terminal symbol (we return a `None` chosen symbol after popping from the stack).
-        # (2) The second case where we pass a `chosen_symbols = None` is at the beginning.
-        # Thus, the following will be executed if `start` is connected to one single terminal symbol.
-        # Handles reaching the end of a symbol graph (`next_symbols` being empty).
-        else:
-            # `last_visit_symbol` will be None at the beginning of the process, otherwise it'll have a valid state.
-            last_visit_symbols = [chosen_state.state for chosen_state in chosen_states]
-            # Get the next sequences.
-            next_sequences = [
-                (
-                    last_visit_graph.tree[last_visit_symbol]
-                    if last_visit_symbol is not None
-                    else last_visit_graph.initials
-                )
-                for last_visit_graph, last_visit_symbol in zip(
-                    last_visit_graphs, last_visit_symbols
-                )
-            ]
-
-        # Handles reaching the end of a symbol graph (`next_symbols` being empty).
-        for next_symbols, chosen_state in zip(next_sequences, chosen_states):
-            if not next_symbols:
-                return
-
-        for next_symbols, chosen_state in zip(next_sequences, chosen_states):
-            for next_symbol in next_symbols:
-                if next_symbol.s_type in [
-                    SymbolType.TERMINAL,
-                    SymbolType.REGEX,
-                    SymbolType.NON_TERMINAL,
-                ] or _is_end_def_symbol(next_symbol):
-                    # Pass by value, not by reference.
-                    next_chosen_state = chosen_state.copy()
-                    # Set state to the last visited symbol.
-                    next_chosen_state.state = next_symbol
-                    # Save the next possible terminal `next_symbol` with its history.
-                    self._next_terminals_w_states[next_symbol] = next_chosen_state
-
-                elif next_symbol.s_type == SymbolType.REFERENCE:
-                    # Backreference predecessors should be unique.
-                    if len(next_symbols) > 1:
-                        raise ParsingError("Reference predecessor is not unique.")
-                    # Retrieve index.
-                    index = int(next_symbol.content[1:])
-                    # Check if index is valid.
-                    if (index + 1) not in self._backreferences.keys():
-                        raise ParsingError(f"Invalid backreference <\\{index}>.")
-                    # Modify the REFERENCE symbol into a TERMINAL symbol with the corresponding content.
-                    next_symbol.s_type, next_symbol.content = (
-                        SymbolType.TERMINAL,
-                        f'"{self._backreferences[index+1]}"',
-                    )
-                    self._next_terminals_w_states[next_symbol] = chosen_state
-
-    @clear_dict_before_call("_next_terminals_w_states")
-    def get_next_terminals(
-        self,
-        chosen_symbols: list[Symbol] = [],
-        chosen_states: list[CFGStatefulGraph] = [],
-    ):
-        self._get_next_terminals(chosen_symbols, chosen_states)
-
-        if self._token_graphs:
-            # Context avoids affecting the backreferences instead of using a copy of Guide.
-            with LTContext(PARSE_BREFS="0"):
-                self._next_terminals_w_states = update_single_token_combinations(
-                    self, self._token_graphs
-                )
-
-    @property
-    def next_terminals_w_states(self):
-        return self._next_terminals_w_states
-
-    def set_assembler(self, assembly_graph: AssemblyGraph):
-        if isinstance(assembly_graph, AssemblyGraph):
-            self._token_graphs = assembly_graph
-        else:
-            raise ParsingError(
-                "Incorrect type, `token_graphs` should be of type `list[AssemblyGraph]`."
+            next_symbol.s_type, next_symbol.content = (
+                SymbolType.TERMINAL,
+                f'"{reference[index + 1]}"',
             )
 
+            yield TrailProposal(symbol=next_symbol, state=proposal.state)
 
-class CFGGuide:
-    _built_cfg_grammar: dict[str, SymbolGraph]
-    _next_terminals_w_states: dict[Symbol, CFGGenerationState]
-    _token_graphs: AssemblyGraph
-    _backreferences: dict[str, dict[int, str]]
 
-    def __init__(self, cfg_grammar: str):
-        self._built_cfg_grammar = build_cfg_grammar_into_symbol_graphs(cfg_grammar)
-        self._next_terminals_w_states = {}
-        self._token_graphs = AssemblyGraph()
-        self._backreferences = defaultdict(lambda: defaultdict(str))
+def get_next_proposals(
+    trail: Trail, proposals: list[TrailProposal] = []
+) -> list[TrailProposal]:
+    if not proposals:
+        start = TrailGraph(graph=trail.graphs["start"], label="start")
+        return list(get_next_proposal(trail, TrailProposal(state=deque([start]))))
 
-    def backreference(
-        self, chosen_symbols: list[Symbol], chosen_states: list[CFGGenerationState]
-    ):
-        # [TODO] Add tests for `extract_indices`.
-        def extract_indices(start_key, dictionary):
-            result = [start_key]
-            current_key = start_key
+    assert (
+        proposal.symbol.content == proposals[0].symbol.content for proposal in proposals
+    ), "Ambiguous symbols must have identical content."
+    return list(
+        chain.from_iterable(
+            get_next_proposal(trail, proposal) for proposal in proposals
+        )
+    )
 
-            # Start with value one less than initial.
-            current_value = dictionary[start_key] - 1
 
-            while current_value >= 1:
-                # Find largest key less than current_key with current_value.
-                next_key = max(
-                    (
-                        k
-                        for k in dictionary.keys()
-                        if k < current_key and dictionary[k] == current_value
-                    ),
-                    default=None,
-                )
+# [TODO] Add tests for `reference_indices`.
+# Each symbol has two indentifiers, which are `count` and `depth`.
+# The count is the literal index of the subgraph which is the backreference index.
+# Example: ( {COUNT, DEPTH = 1} `def_1` ( {COUNT, DEPTH = 2} `def_2` ) {COUNT, DEPTH = 1} `def_3` ).
+# If the chosen symbol is at a certain `count = Z`, then (1) we add its content to the
+# backreference at the depth `self._built_symbol_graph.metadata["_COUNT_TO_DEPTH"][Z]`,
+# and (2) if its `depth = Y` is > 1, we add its content to the backreferences which have less depth.
+# Thus, we must find the counts at which the depth is < Y.
+# Another detail is the maximum, since adjacent graphs have the same depth,
+# there'll be many counts with depth `X-1`, but the content should be added to the closest index.
+def resolve_counts(count, _COUNT_TO_DEPTH: dict[int, int]) -> list[int]:
+    result = [count]
+    curr_count = count
+    curr_depth = _COUNT_TO_DEPTH[count] - 1
 
-                if next_key is None:
-                    break
-
-                result.append(next_key)
-                current_key = next_key
-                # Decrease the value we're looking for.
-                current_value -= 1
-
-            return result
-
-        chosen_symbol, chosen_state = chosen_symbols[0], chosen_states[0]
-
-        # END_DEF can be given as choice symbol.
-        if _is_end_def_symbol(chosen_symbol):
-            return
-
-        label = chosen_state[-1].label
-
-        count = chosen_symbol.s_metadata["_ORDER"]
-
-        indices = extract_indices(
-            count, self._built_cfg_grammar[label].metadata["_COUNT_TO_DEPTH"]
+    while curr_depth >= 1:
+        next_count = max(
+            (
+                k
+                for k in _COUNT_TO_DEPTH.keys()
+                if k < curr_count and _COUNT_TO_DEPTH[k] == curr_depth
+            ),
+            default=None,
         )
 
-        for index in indices:
-            self._backreferences[label][index] += chosen_symbol.content[1:-1]
+        if next_count is None:
+            break
 
-        # Propagating _backreferences into lower layers.
-        for layer in list(chosen_state)[:-1]:
-            state_symbol, state_label = layer.state, layer.label
+        result.append(next_count)
+        curr_count = next_count
+        curr_depth -= 1
 
-            assert (
-                layer.state is not None
-            ), "None state was found while backreferencing."
+    return result
 
-            count = state_symbol.s_metadata["_ORDER"]  # type: ignore
 
-            indices = extract_indices(
-                count, self._built_cfg_grammar[state_label].metadata["_COUNT_TO_DEPTH"]
-            )
+def capture_backrefs(trail: Trail, proposal: TrailProposal):
+    curr_symbol, curr_state = proposal.symbol, proposal.state
 
-            for index in indices:
-                # self._backreferences[state_label][index] += chosen_symbol.content[1:-1]
-                # Pop backereferences that contain non-terminal symbols.
-                self._backreferences[state_label].pop(index, None)
-    
-    # [TODO] At some point the line below was commented, why? 
-    # Commenting the decorator below invalidates some tests in `test_lextrail_assembly.py`.
-    # @clear_dict_before_call("_next_terminals_w_states")
-    def _get_next_terminals(
-        self,
-        chosen_symbols: list[Symbol] = [],
-        chosen_states: list[CFGGenerationState] = [],
-    ):
-        if isinstance(chosen_symbols, Symbol):
-            chosen_symbols = [chosen_symbols]
+    if is_end_def_symbol(curr_symbol):
+        return
 
-        if isinstance(chosen_states, LTDeque) and all(
-            isinstance(x, CFGStatefulGraph) for x in chosen_states
-        ):
-            chosen_states = [chosen_states]
+    label = curr_state[-1].label
 
-        # Type of the symbols must be TERMINAL, REGEX or END_DEF.
-        if not all(
-            x.s_type in [SymbolType.TERMINAL, SymbolType.REGEX] or _is_end_def_symbol(x)
-            for x in chosen_symbols
-        ):
-            raise ParsingError("Symbols must be of type TERMINAL or REGEX.")
+    counts = resolve_counts(
+        curr_symbol.s_metadata["_COUNT"],
+        trail.graphs[label].metadata["_COUNT_TO_DEPTH"],
+    )
 
-        # Content of the symbols must be the same.
-        if not all(x.content == chosen_symbols[0].content for x in chosen_symbols):
-            raise ParsingError("Ambiguous symbols must have identical content.")
+    for count in counts:
+        trail.backrefs[label][count] += curr_symbol.content
 
-        if not chosen_states:
-            if not chosen_symbols:
-                # Turning the symbol graph that'll be added to the stack
-                # into a stateful object `CFGStatefulGraph`.
-                start = CFGStatefulGraph(self._built_cfg_grammar["start"], "start")
-                self._get_next_terminals(chosen_states=[LTDeque([start])])
-                return
-            else:
-                raise ParsingError(
-                    "`CFGGenerationState` is empty while `chosen_symbols` is not."
-                )
+    # Propagating references into upper layers.
+    for layer in list(curr_state)[:-1]:
+        state_symbol, state_label = layer.state, layer.label
 
-        # Poping the last graphs.
-        last_visit_graphs = [chosen_state[-1].graph for chosen_state in chosen_states]
+        assert layer.state is not None, "None state was found while backreferencing."
 
-        if chosen_symbols:
-            if int(getenv("PARSE_BREFS", 0)):
-                # Backreference update.
-                self.backreference(chosen_symbols, chosen_states)
-            # Update the state for `CFGStatefulGraph` to the terminal(s) symbol(s) chosen by the LLM.
-            for chosen_state, chosen_symbol in zip(chosen_states, chosen_symbols):
-                chosen_state[-1].state = chosen_symbol
-            # Get the next sequences.
-            next_sequences = [
-                last_visit_graph.tree[chosen_symbol]
-                for last_visit_graph, chosen_symbol in zip(
-                    last_visit_graphs, chosen_symbols
-                )
-            ]
-        # [NOTE] Sometimes `next_symbols` is returned empty, this can happen when:
-        # (1) You pop from the stack, and the place where you land was a `END-OF-DEFINITON`
-        # non-terminal symbol (we return a `None` chosen symbol after popping from the stack).
-        # (2) The second case where we pass a `chosen_symbols = []` is at the beginning.
-        # Thus, the following will be executed if `start` is connected to one single terminal symbol.
-        # Handles reaching the end of a symbol graph (`next_symbols` being empty).
-        else:
-            # `last_visit_symbol` will be None at the beginning of the process, otherwise it'll have a valid state.
-            last_visit_symbols = [
-                chosen_state[-1].state for chosen_state in chosen_states
-            ]
-            # Get the next sequences.
-            next_sequences = [
-                (
-                    last_visit_graph.tree[last_visit_symbol]
-                    if last_visit_symbol is not None
-                    else last_visit_graph.initials
-                )
-                for last_visit_graph, last_visit_symbol in zip(
-                    last_visit_graphs, last_visit_symbols
-                )
-            ]
+        counts = resolve_counts(
+            state_symbol.s_metadata["_COUNT"],
+            trail.graphs[state_label].metadata["_COUNT_TO_DEPTH"],
+        )
 
-        # Handles reaching the end of a symbol graph (`next_symbols` being empty).
-        for next_symbols, chosen_state in zip(next_sequences, chosen_states):
-            if not next_symbols:
-                chosen_state.pop()
-                # Handles reaching the end of stack.
-                if not chosen_state:
-                    return
-                # Should return the last label, but as a symbol of the last symbol graph.
-                self._get_next_terminals(chosen_states=[chosen_state.copy()])
-                return
-
-        for next_symbols, chosen_state in zip(next_sequences, chosen_states):
-            for next_symbol in next_symbols:
-                if next_symbol.s_type in [
-                    SymbolType.TERMINAL,
-                    SymbolType.REGEX,
-                ] or _is_end_def_symbol(next_symbol):
-                    # Pass by value, not by reference.
-                    next_chosen_state = chosen_state.copy()
-                    # Set state to the last visited symbol.
-                    next_chosen_state[-1].state = next_symbol
-                    # Save the next possible terminal `next_symbol` with its history.
-                    self._next_terminals_w_states[next_symbol] = next_chosen_state
-
-                # Create an additional layer in the stack.
-                if next_symbol.s_type == SymbolType.NON_TERMINAL:
-                    # Pass by value, not by reference.
-                    next_chosen_state = chosen_state.copy()
-                    # Set up the state for the bottom stack layer, it'll save where we left for when
-                    # we pop the upper stack layer. We would then search for the next symbols from
-                    # the last visited `non-terminal` symbol.
-                    next_chosen_state[-1].state = next_symbol
-                    # Turning the symbol graph that'll be added to the stack
-                    # into a stateful object `CFGStatefulGraph`.
-                    cfg_stateful_graph = CFGStatefulGraph(
-                        graph=self._built_cfg_grammar[next_symbol.content],
-                        label=next_symbol.content,
-                    )
-                    # Adding the stateful graph layer to the stack.
-                    next_chosen_state.append(cfg_stateful_graph)
-                    # Recurse over the added layer.
-                    self._get_next_terminals(chosen_states=[next_chosen_state])
-
-                if next_symbol.s_type == SymbolType.REFERENCE:
-                    # Backreference predecessors should be unique.
-                    if len(next_symbols) > 1:
-                        raise ParsingError("Reference predecessor is not unique.")
-                    # Retrieve index.
-                    index = int(next_symbol.content[1:])
-                    # Check if index is valid.
-                    if (index + 1) not in self._backreferences[
-                        chosen_states[0][-1].label
-                    ].keys():
-                        raise ParsingError(
-                            f"Invalid backreference `\\{index}`: Missing or contains non-terminal symbols."
-                        )
-                    # Modify the REFERENCE symbol into a TERMINAL symbol with the corresponding content.
-                    next_symbol.s_type, next_symbol.content = (
-                        SymbolType.TERMINAL,
-                        f'"{self._backreferences[chosen_states[0][-1].label][index+1]}"',
-                    )
-                    self._next_terminals_w_states[next_symbol] = chosen_state
-
-    @clear_dict_before_call("_next_terminals_w_states")
-    def get_next_terminals(
-        self,
-        chosen_symbols: list[Symbol] = [],
-        chosen_states: list[CFGGenerationState] = [],
-    ):
-        self._get_next_terminals(chosen_symbols, chosen_states)
-
-        if self._token_graphs:
-            # Context avoids affecting the backreferences instead of using a copy of CFGGuide.
-            with LTContext(PARSE_BREFS="0"):
-                self._next_terminals_w_states = update_single_token_combinations(
-                    self, self._token_graphs
-                )
-
-    @clear_dict_before_call("_next_terminals_w_states")
-    def get_next_terminals_temp(
-        self,
-        chosen_symbols: list[Symbol] = [],
-        chosen_states: list[CFGGenerationState] = [],
-    ):
-        self._get_next_terminals(chosen_symbols, chosen_states)
-
-    @property
-    def next_terminals_w_states(self):
-        return self._next_terminals_w_states
-
-    def set_assembler(self, assembly_graph: AssemblyGraph):
-        if isinstance(assembly_graph, AssemblyGraph):
-            self._token_graphs = assembly_graph
-        else:
-            raise ParsingError(
-                "Incorrect type, `token_graph` should be of type `AssemblyGraph`."
-            )
-
-    def copy(self):
-        # Shallow copy of `CFGGuide` instance without recomputing the grammar.
-        new_instance = CFGGuide.__new__(CFGGuide)
-        new_instance._built_cfg_grammar = self._built_cfg_grammar
-        new_instance._next_terminals_w_states = {}
-        new_instance._backreferences = {}
-        new_instance._token_graphs = AssemblyGraph(initials=[], tree={}, finals=[])
-        return new_instance
+        for count in counts:
+            trail.backrefs[state_label][count] += curr_symbol.content
+            # Pop backereferences that contain non-terminal symbols.
+            # [TODO] There is an issue with the approach.
+            # trail.references[state_label].pop(index, None)

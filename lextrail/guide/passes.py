@@ -1,15 +1,11 @@
 import re
 import warnings
 from collections import deque
-from copy import deepcopy
 
-from lextrail.base import Symbol, SymbolGraph
-from lextrail.build.passes import _split_symbols
+from lextrail.base import SymbolGraph
+from lextrail.build.passes import split_definition_into_lexemes
 from lextrail.exceptions import InfiniteLoop, InvalidGrammar
-from lextrail.helpers import (
-    bfs,
-    _is_escaped,
-)
+from lextrail.helpers import bfs, is_escaped
 
 
 def _is_not_valid_rule_name(rule: str):
@@ -18,46 +14,46 @@ def _is_not_valid_rule_name(rule: str):
     return regex.search(rule) is not None
 
 
-def _split_cfg_grammar(grammar: str) -> list[str]:
-    rules = []
-    current = []
+def split_cfg_into_lines(grammar: str) -> list[str]:
+    rules: list[str] = []
     in_quote = False
     in_regex = False
+    rule: list[str] = []
     i = 0
 
     while i < len(grammar):
-        current_character = grammar[i]
+        char = grammar[i]
 
-        if current_character == '"' and not _is_escaped(grammar, i - 1):
+        if char == '"' and not is_escaped(grammar, i - 1):
             in_quote = not in_quote
 
-        elif current_character == "/" and not in_regex and not in_quote:
+        elif char == "/" and not in_regex and not in_quote:
             in_regex = not in_regex
 
-        elif current_character == "/" and in_regex:
+        elif char == "/" and in_regex:
             in_regex = not in_regex
 
-        elif current_character == "\n" and not in_quote and not in_regex:
-            if current:
-                rules.append("".join(current))
-                current.clear()
+        elif char == "\n" and not in_quote and not in_regex:
+            if rule:
+                rules.append("".join(rule))
+                rule.clear()
             i += 1
             continue
 
-        current.append(current_character)
+        rule.append(char)
         i += 1
 
-    if remains := "".join(current).strip():
+    if remains := "".join(rule).strip():
         rules.append(remains)
 
     return rules
 
 
-def _divide_cfg_grammar_into_rules(grammar: str) -> dict[str, str]:
-    divided_cfg_grammar_dict: dict[str, str] = {}
-    current_rule_name: str = ""
+def divide_cfg_into_rules(grammar: str) -> dict[str, str]:
+    divided_cfg: dict[str, str] = {}
+    rule_name = ""
 
-    lines = _split_cfg_grammar(grammar)
+    lines = split_cfg_into_lines(grammar)
 
     for line in lines:
         line = line.strip()
@@ -69,9 +65,9 @@ def _divide_cfg_grammar_into_rules(grammar: str) -> dict[str, str]:
         if ":" not in line:
             # [NOTE] Continued rule in a new line only allowed if `|` is used at the beginning.
             if line[0] != "|":
-                raise InvalidGrammar(f"Missing `:` in '''{line}'''.")
+                raise InvalidGrammar(f"Missing `:` in {line}.")  # noqa: E231
 
-            divided_cfg_grammar_dict[current_rule_name] += " " + line
+            divided_cfg[rule_name] += " " + line
 
         else:
             # [TODO] Get rid of the RegEx for CF.
@@ -81,22 +77,20 @@ def _divide_cfg_grammar_into_rules(grammar: str) -> dict[str, str]:
                 # Handles multiple use of ':' in a single definition.
                 raise InvalidGrammar(f"Invalid grammar rule: {line}.")
 
-            current_rule_name, rule_definition = parts
+            rule_name, rule_definition = parts
 
-            if _is_not_valid_rule_name(current_rule_name):
-                raise InvalidGrammar(f"Invalid rule name: {current_rule_name}.")
+            if _is_not_valid_rule_name(rule_name):
+                raise InvalidGrammar(f"Invalid rule name: {rule_name}.")
 
-            if current_rule_name in divided_cfg_grammar_dict:
-                raise InvalidGrammar(
-                    f"Redefinition of grammar rule: {current_rule_name}."
-                )
+            if rule_name in divided_cfg:
+                raise InvalidGrammar(f"Redefinition of grammar rule: {rule_name}.")
 
-            divided_cfg_grammar_dict[current_rule_name] = rule_definition.strip()
+            divided_cfg[rule_name] = rule_definition.strip()
 
-    if "start" not in divided_cfg_grammar_dict:
+    if "start" not in divided_cfg:
         raise InvalidGrammar("The symbol `start` is non-existant.")
 
-    return divided_cfg_grammar_dict
+    return divided_cfg
 
 
 """
@@ -106,7 +100,7 @@ def _divide_cfg_grammar_into_rules(grammar: str) -> dict[str, str]:
 
 def is_not_escapable_from_infinite_loop(
     symbol_graph: SymbolGraph, loop_content: str
-) -> list[Symbol]:
+) -> bool:
     visited = []
     queue = deque(symbol_graph.initials)
 
@@ -138,7 +132,7 @@ def is_not_escapable_from_infinite_loop(
 def check_for_potential_infinite_loops(
     rule_name: str, rule_definition: str, symbol_graph: SymbolGraph
 ):
-    is_loop = rule_name in _split_symbols(rule_definition)
+    is_loop = rule_name in split_definition_into_lexemes(rule_definition)
 
     if is_loop:
         warnings.warn(

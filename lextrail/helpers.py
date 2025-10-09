@@ -97,6 +97,22 @@ class LTContext:
                 os.environ[k] = v
 
 
+class TrailContext:
+    def __init__(self, **env):
+        self.env = env
+
+    def __enter__(self):
+        self.original = {key: os.getenv(key) for key in self.env}
+        os.environ.update(self.env)
+
+    def __exit__(self, *args):
+        for k, v in self.original.items():
+            if v is None:
+                del os.environ[k]
+            else:
+                os.environ[k] = v
+
+
 """
     Helper functions for tests.
 """
@@ -113,8 +129,13 @@ def get_ordered_symbols_from_symbol_graph(
     # The default int is set to 0.
     order: dict[str, int] = defaultdict(int)
     for symbol in visited:
-        symbols[symbol.content + f"|{order[symbol.content]}"] = symbol
-        order[symbol.content] += 1
+        content = (
+            f'"{symbol.content}"'
+            if symbol.s_type == SymbolType.TERMINAL
+            else symbol.content
+        )
+        symbols[content + f"|{order[content]}"] = symbol
+        order[content] += 1
 
     return symbols
 

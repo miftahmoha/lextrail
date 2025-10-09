@@ -116,15 +116,22 @@ def connect_symbol_graph(
 
         symbol_finals = symbol_predecessors if symbol_predecessors else [symbol_final]
 
-        for symbol_final in symbol_finals:
+        for symbol_final_ in symbol_finals:
             for symbol_initial in symbol_graph_rhs.initials:
                 # `END_DEF` should always be final symbols, duplication in finals
                 # is not an issue when the predecessors are distinct. However, duplicates
                 # in initials is an issue, since they have no successors, nor predecessors.
-                if is_end_def_symbol(symbol_initial):
+                # [NOTE] Not really, since at some point, we do mutate the predecessors of
+                # `END_DEF` symbols to connect to somewhere else. Getting the predecessors
+                # the next time will lead to an error. Could be fixed later, a set will
+                # eventually be used instead of a list.
+                if (
+                    is_end_def_symbol(symbol_initial)
+                    and symbol_initial not in symbol_graph_finals_out
+                ):
                     symbol_graph_finals_out.append(symbol_initial)
 
-                symbol_graph_tree_out[symbol_final].append(symbol_initial)
+                symbol_graph_tree_out[symbol_final_].append(symbol_initial)
 
     return SymbolGraph(
         initials=symbol_graph_initials_out,
@@ -307,7 +314,7 @@ def build_symbol_graph(
                     lexems=current_stack_accumulated_symbols,
                     metadata={
                         "_DEPTH": queue_symbol_level,
-                        "_ORDER": queue_symbol_count,
+                        "_COUNT": queue_symbol_count,
                     },
                 )
 
@@ -374,14 +381,14 @@ def build_symbol_graph(
                             lexems=current_stack_accumulated_symbols[:index],
                             metadata={
                                 "_DEPTH": queue_symbol_level,
-                                "_ORDER": queue_symbol_count,
+                                "_COUNT": queue_symbol_count,
                             },
                         ),
                         construct_symbol_subgraph(
                             lexems=current_stack_accumulated_symbols[index + 1 :],
                             metadata={
                                 "_DEPTH": queue_symbol_level,
-                                "_ORDER": queue_symbol_count,
+                                "_COUNT": queue_symbol_count,
                             },
                         ),
                     )
@@ -399,7 +406,7 @@ def build_symbol_graph(
                     lexems=current_stack_accumulated_symbols,
                     metadata={
                         "_DEPTH": queue_symbol_level,
-                        "_ORDER": queue_symbol_count,
+                        "_COUNT": queue_symbol_count,
                     },
                 )
                 symbol_graph_out = connect_symbol_graph(
@@ -421,7 +428,7 @@ def build_symbol_graph(
                     lexems=current_stack_accumulated_symbols,
                     metadata={
                         "_DEPTH": queue_symbol_level,
-                        "_ORDER": queue_symbol_count,
+                        "_COUNT": queue_symbol_count,
                     },
                 )
 
@@ -467,6 +474,6 @@ def build_symbol_graph(
     symbol_graph = recurse_build(queue_symbol_def)
 
     # Set global metadata.
-    symbol_graph.metadata["_COUNT_TO_DEPTH"] = _GLOBAL_COUNT_TO_DEPTH
+    symbol_graph.metadata["_COUNT_TO_DEPTH"] = _GLOBAL_COUNT_TO_DEPTH.copy()
 
     return symbol_graph

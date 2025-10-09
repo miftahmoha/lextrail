@@ -1,73 +1,59 @@
 import uuid
-from collections import defaultdict
-from typing import Dict, List, Optional, cast
+from collections import defaultdict, deque
+from copy import copy
+from itertools import chain
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Deque
 
-from lextrail.base import CFGGenerationState, CFGStatefulGraph, Symbol, SymbolType
-from lextrail.build.passes import build_symbol_from_content
-from lextrail.exceptions import CombineError
+from lextrail.base import Symbol
+from lextrail.build import build_symbol_from_lexeme
+from lextrail.exceptions import AssemblyError
+from lextrail.helpers import TrailContext
 
-# [TODO] Create a character type with runtime validation.
-char = str
+if TYPE_CHECKING:
+    from lextrail.guide import Trail, TrailGraph, TrailProposal
+
+# Avoid circular import errors.
+import lextrail.guide as Py_Module
 
 
-class AssemblyNode:
-    def __init__(self, content: str = ""):
-        self.content = content
-        self.id = uuid.uuid4()
+@dataclass(slots=True)
+class ASMNode:
+    content: str = ""
+    id: uuid.UUID = field(default_factory=lambda: uuid.uuid4())
 
     def __hash__(self):
-        return hash((self.content, self.id))
-
-    def __eq__(self, other):
-        # Ensure equality is checked for all fields.
-        if not isinstance(other, AssemblyNode):
-            return False
-
-        return (self.content == other.content) and (self.id == other.id)
-
-    def __bool__(self):
-        return bool(self.content)
+        return hash(self.id)
 
 
-AssemblyTree = Dict[AssemblyNode, List[AssemblyNode]]
+@dataclass(slots=True)
+class ASMState:
+    node: ASMNode = ASMNode()
+    acc: str = ""
+    idx: int = 0
 
 
-class AssemblyState:
-    def __init__(self, node: Optional[AssemblyNode] = None, accu: str = ""):
-        self.node = node
-        self.accu = accu
+@dataclass(slots=True)
+class ASMGraph:
+    initials: list[ASMNode] = field(default_factory=list)
+    tree: dict[ASMNode, list[ASMNode]] = field(
+        default_factory=lambda: defaultdict(list)
+    )
+    finals: list[ASMNode] = field(default_factory=list)
 
-    def __bool__(self):
-        return bool(self.node) and bool(self.accu)
 
+def build_asm_graph(vocabulary: list[str]) -> ASMGraph:
+    initials: list[ASMNode] = []
+    tree: dict[ASMNode, list[ASMNode]] = defaultdict(list)
+    finals: list[ASMNode] = []
 
-class AssemblyGraph:
-    def __init__(
-        self,
-        initials: List[AssemblyNode] = [],
-        tree: AssemblyTree = {},
-        finals: List[AssemblyNode] = [],
+    if not isinstance(vocabulary, list) and not all(
+        isinstance(token, str) for token in vocabulary
     ):
-        self.initials = initials
-        self.tree = tree
-        self.finals = finals
-
-    def __eq__(self, other) -> bool:
-        if isinstance(other, AssemblyGraph):
-            return (self.initials == other.initials) and (self.tree == other.tree)
-        return NotImplemented
-
-    def __bool__(self) -> bool:
-        return bool(self.initials) and bool(self.tree) and bool(self.finals)
-
-
-def build_assembly_graph(vocabulary: list[str]) -> AssemblyGraph:
-    initials: List[AssemblyNode] = []
-    tree: AssemblyTree = defaultdict(list)
-    finals: List[AssemblyNode] = []
+        raise AssemblyError("The vocabulary must be list[str].")
 
     for word in vocabulary:
-        current_node = AssemblyNode()
+        current_node = ASMNode()
 
         for i, char in enumerate(word):
             candidates = initials if i == 0 else tree[current_node]
@@ -78,7 +64,7 @@ def build_assembly_graph(vocabulary: list[str]) -> AssemblyGraph:
             if existing_node:
                 current_node = existing_node
             else:
-                new_node = AssemblyNode(char)
+                new_node = ASMNode(char)
                 candidates.append(new_node)
                 current_node = new_node
 
@@ -86,97 +72,100 @@ def build_assembly_graph(vocabulary: list[str]) -> AssemblyGraph:
         if current_node:
             finals.append(current_node)
 
-    return AssemblyGraph(initials=initials, tree=tree, finals=finals)
+    return ASMGraph(initials=initials, tree=tree, finals=finals)
 
 
-def build_assembly_proposal(
-    last_symbol: Symbol,  # [NOTE] They're called `last` for a reason, they're last in the assembly sequence.
-    last_state: CFGGenerationState,
-    assembled_content: str,
-) -> dict[Symbol, CFGGenerationState]:
-    if last_symbol.s_type != SymbolType.TERMINAL:
-        raise CombineError(
-            "Expected `SymbolType.TERMINAL` got `{symbol_prev.s_type}` instead."
+def build_asm_proposal(
+    last_symbol: Symbol,
+    last_state: Deque["TrailGraph"],  # [NOTE] They're last in the assembly sequence.
+    asm_content: str,
+) -> "TrailProposal":
+    asm_symbol = build_symbol_from_lexeme(f'"{asm_content}"')
+
+    # `last_state` gets update at `get_next_state`, which mutates `asm_state`.
+    asm_state = deque([copy(state) for state in last_state])
+
+    # `last_symbol` and `asm_symbol` get same state.
+    asm_state[-1].state = asm_symbol
+    asm_state[-1].graph.tree[asm_symbol] = last_state[-1].graph.tree[last_symbol]
+
+    return Py_Module.TrailProposal(symbol=asm_symbol, state=asm_state)
+
+
+def _next_asm_proposal(trail: "Trail", proposal: "TrailProposal", state: ASMState):
+    curr_content, curr_state = proposal.symbol.content, proposal.state
+    curr_idx, curr_acc = state.idx, state.acc
+    curr_symbol = proposal.symbol
+
+    candidates = trail.assembler.tree.get(state.node, [])
+
+    if not candidates:
+        return
+
+    assemble_node = next(
+        (
+            candidate
+            for candidate in candidates
+            if candidate.content == curr_content[curr_idx]
+        ),
+        ASMNode(),
+    )
+
+    if assemble_node in trail.assembler.finals:
+        next_proposal = build_asm_proposal(
+            curr_symbol, curr_state, curr_acc + curr_content[curr_idx]
         )
+        yield next_proposal
 
-    assembled_symbol = build_symbol_from_content(f'"{assembled_content}"')
+    next_idx = curr_idx + 1 if curr_content[curr_idx + 1 :] else 0
+    next_proposals = (
+        [proposal] if next_idx != 0 else Py_Module.get_next_proposals(trail, [proposal])
+    )
+    next_state = ASMState(assemble_node, curr_acc + curr_content[curr_idx], next_idx)
 
-    # [NOTE] We add a connection to the assembled state, a shallow copy is needed.
-    assembled_state = last_state.copy()
-
-    if assembled_state:
-        # (*) Copy tree connections from the last assembled symbol to combined symbol.
-        last_graph = assembled_state[-1].graph
-        last_graph.tree[assembled_symbol] = last_graph.tree[assembled_symbol]
-
-    return {assembled_symbol: assembled_state}
+    for next_proposal in next_proposals:
+        yield from _next_asm_proposal(trail, next_proposal, next_state)
 
 
-def update_single_token_combinations(
-    guide,
-    assembly_graph: AssemblyGraph,
+def _get_asm_proposals(
+    trail: "Trail",
+    proposal: "TrailProposal",
 ):
-    proposals: dict[Symbol, CFGStatefulGraph | CFGGenerationState] = {}
+    candidates = trail.assembler.initials
+    curr_symbol, curr_state = proposal.symbol, proposal.state
+    curr_content = curr_symbol.content
 
-    def recurse_update(
-        next_terminals_w_states: dict[Symbol, CFGGenerationState],
-        state: AssemblyState = AssemblyState(),
-    ):
-        nonlocal proposals
+    if not candidates:
+        return
 
-        for symbol_next, state_next in next_terminals_w_states.items():
-            # [TODO][PARALLELISM] Each trajectory could be a core.
-            # Each trajectory should have its own state instance, interference shouldn't happen.
-            current_state = AssemblyState(state.node, state.accu)
+    asm_node = next(
+        (candidate for candidate in candidates if candidate.content == curr_content[0]),
+        ASMNode(),
+    )
 
-            if not current_state:
-                assemble_node = next(
-                    (
-                        candidate
-                        for candidate in assembly_graph.initials
-                        if candidate.content == symbol_next.content[1:-1]
-                    ),
-                    None,
-                )
+    if asm_node in trail.assembler.finals:
+        next_proposal = build_asm_proposal(curr_symbol, curr_state, curr_content[0])
+        yield next_proposal
 
-                if assemble_node is None:
-                    continue
-                else:
-                    current_state.node = assemble_node
-                    current_state.accu = symbol_next.content[1:-1]
-            else:
-                # `mypy` does not reason about the custom implementation of `__bool__` for `AssemblyState`.
-                candidates = assembly_graph.tree.get(
-                    cast(AssemblyNode, current_state.node), []
-                )
+    next_idx = 0 if len(curr_content) == 1 else 1
+    next_proposals = (
+        [proposal] if next_idx == 1 else Py_Module.get_next_proposals(trail, [proposal])
+    )
+    next_state = ASMState(asm_node, curr_content, 0 if len(curr_content) == 1 else 1)
 
-                assemble_node = next(
-                    (
-                        candidate
-                        for candidate in candidates
-                        if candidate.content == symbol_next.content[1:-1]
-                    ),
-                    AssemblyNode(),
-                )
-                if assemble_node.content == symbol_next.content[1:-1]:
-                    current_state.node = assemble_node
-                    current_state.accu += symbol_next.content[1:-1]
-                else:
-                    continue
+    for next_proposal in next_proposals:
+        yield from _next_asm_proposal(trail, next_proposal, next_state)
 
-                if assemble_node in assembly_graph.finals:
-                    proposal = build_assembly_proposal(
-                        symbol_next, state_next, current_state.accu
-                    )
-                    proposals.update(proposal)
 
-            # [TODO] Turn `get_next_terminals` into one single function.
-            guide.get_next_terminals_temp(symbol_next, state_next)
-            recurse_update(guide._next_terminals_w_states.copy(), current_state)
-
-    # [TODO] Avoid the multiple copies through a more functional approach.
-    next_terminals_w_states = guide._next_terminals_w_states.copy()
-    recurse_update(next_terminals_w_states)
-    next_terminals_w_states.update(proposals)
-
-    return next_terminals_w_states
+def get_asm_proposals(
+    trail: "Trail",
+    proposals: list["TrailProposal"],
+):
+    with TrailContext(
+        PARSE_BREFS="0"
+    ):  # No reference captures during `get_next_proposals` calls.
+        return list(
+            chain.from_iterable(
+                _get_asm_proposals(trail, proposal) for proposal in proposals
+            )
+        )

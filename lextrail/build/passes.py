@@ -32,12 +32,15 @@ def _is_valid_regex(pattern):
         raise InvalidRegex(f"The regex expression {pattern} is invalid.")
 
 
+# [TODO] Make an symbol with an empty content not possible, it gets ignored.
+# Empty NON-TERMINALs shouldn't be able to be possible, the issue would be with TERMINALs and REGEX ("" and //).
 def build_symbol_from_lexeme(content: str) -> Symbol:
     if content.startswith('"') and content.endswith('"'):
-        node = Symbol(content, SymbolType.TERMINAL)
+        node = Symbol(content[1:-1], SymbolType.TERMINAL)
 
     elif content.startswith("/") and content.endswith("/"):
         # Throw an exception if regex is not valid.
+        # [TODO] Is there some syntax that "I" consider as VALID that Python engine considers an ERROR?
         _is_valid_regex(content[1:-1])
 
         node = Symbol(content[1:-1], SymbolType.REGEX)
@@ -48,6 +51,8 @@ def build_symbol_from_lexeme(content: str) -> Symbol:
     elif content.startswith("\\") and content[1:].isdigit():
         # [NOTE] Avoids storing results if there are no backreferences. It is
         # executed after parsing regex expressions.
+        # [NOTE] Setting the environement variable doesn't seem good, also there
+        # seems to be no need to put the '\\' inside the content.
         os.environ["PARSE_BREFS"] = "1"
         node = Symbol(content, SymbolType.REFERENCE)
 
@@ -57,6 +62,7 @@ def build_symbol_from_lexeme(content: str) -> Symbol:
     return node
 
 
+# Is there a utility for the check?
 def _is_valid_lexeme_syntax(symbol_str: str) -> bool:
     # Special characters REGEX.
     regex = re.compile(r"[@!#$%^&*()<>?/\\|}~:]")
@@ -123,163 +129,138 @@ def _check_lexeme_errors(lexemes: list[str]) -> None:
 
 
 def split_definition_into_lexemes(definition: str) -> list[str]:
-    result: list[str] = []
-    current: list[str] = []
+    DELIMITERS = set("()[]{}<>|")
+    QUANTIFIERS = {"*": ("{", "}"), "+": ("<", ">"), "?": ("[", "]")}
+
+    lexemes: list[str] = []
     in_quote = False
     in_regex = False
-    is_escaped_quote = False
+    lexeme: list[str] = []
     i = 0
 
+    def consume_lexeme():
+        if lexeme:
+            lexemes.append("".join(lexeme))
+            lexeme.clear()
+
+    def is_escaped(pos):
+        count = 0
+        pos -= 1
+        while pos >= 0 and definition[pos] == "\\":
+            count += 1
+            pos -= 1
+        return count % 2 == 1
+
+    def peek(offset):
+        return definition[i + offset] if 0 < i + offset < len(definition) else None
+
     while i < len(definition):
-        current_character = definition[i]
+        char = definition[i]
 
-        # Dealing with regex expressions.
-        if current_character == "/" and not in_regex and not in_quote:
-            warnings.warn(
-                "Ensure that `/` is always escaped inside the regex expression `/`-> `\\/` to avoid an undefined behavior",
-            )
+        # === REGEX HANDLING ===
+        if char == "/" and not in_quote:
+            if not in_regex:
+                # Start regex.
+                consume_lexeme()
+                lexeme.append(char)
+                in_regex = True
+            elif not is_escaped(i):
+                # End regex.
+                lexeme.append(char)
+                consume_lexeme()
+                in_regex = False
 
-            if current:
-                result.append("".join(current))
-                current.clear()
-            current.append(current_character)
-            in_regex = not in_regex
+        # === PIPE (OR) OPERATOR ===
+        elif char == "|" and not in_quote and not in_regex:
+            consume_lexeme()
+            lexemes.append(char)
 
+        # === QUOTE HANDLING ===
+        elif char == '"' and not in_regex:
+            if not in_quote:
+                # Starting quote.
+                consume_lexeme()
+                lexeme.append(char)
+                in_quote = True
+            elif is_escaped(i):
+                # Escaped quote inside string.
+                lexeme.append(char)
+            else:
+                # Ending quote.
+                lexeme.append(char)
+                consume_lexeme()
+                in_quote = False
+
+        # === QUANTIFIER CONVERSION: ()* -> [...]  ===
         elif (
-            current_character == "/"
-            and in_regex
-            and not in_quote
-            and not is_escaped(definition, i - 1)
-        ):
-            result.append("".join(current) + current_character)
-            current.clear()
-            in_regex = not in_regex
-
-        # Dealing with an escaped quote "\\"".
-        # `"` is used as symbol delimiters for terminals (`"lexeme"`), to express `"` as a
-        # terminal, escape it with backlash "\\"" or (r)"\"".
-        elif (
-            current_character == "\\"
-            and not is_escaped(definition, i - 1)
-            and definition[i + 1] == '"'
-            and in_quote
-        ):
-            is_escaped_quote = not is_escaped_quote
-
-        # Dealing with `|`.
-        elif current_character == "|" and not in_quote and not in_regex:
-            if current:
-                result.append("".join(current))
-                current.clear()
-            result.append(current_character)
-            i += 1
-            continue
-
-        # Converting ()*, ()+ and ()? syntax to standard.
-        # [TODO] We'll remove standard syntax gradually.
-        elif (
-            current_character == ")"
-            and i + 1 < len(definition)
-            and definition[i + 1] in "+*?"
+            char == ")"
+            and (next_char := peek(1)) in QUANTIFIERS
             and not in_quote
             and not in_regex
         ):
-            if current:
-                result.append("".join(current))
-                current.clear()
-            # Convert `*+?` to standard `)]}`.
-            result.append(_MAP_TO_STANDARD[definition[i + 1]][1])
-            # Convert `*+?` to standard `([{`.
-            stack_idx = 0
-            for idx in reversed(range(len(result))):
-                if result[idx] == "(":
-                    if stack_idx != 0:
-                        stack_idx -= 1
-                    else:
-                        result[idx] = _MAP_TO_STANDARD[definition[i + 1]][0]
+            consume_lexeme()
+            open_br, close_br = QUANTIFIERS[next_char]
+            lexemes.append(close_br)
+
+            # Find matching opening parenthesis and convert it.
+            depth = 0
+            for idx in reversed(range(len(lexemes))):
+                if lexemes[idx] == ")":
+                    depth += 1
+                elif lexemes[idx] == "(":
+                    if depth == 0:
+                        lexemes[idx] = open_br
                         break
-                elif result[idx] == ")":
-                    stack_idx += 1
-            # Jump over `*+?`.
-            i += 2
-            continue
+                    depth -= 1
 
-        # Converting <symbol><quantifier> to (<symbol>)<quantifier>.
-        # [TODO] Not tested.
-        elif (
-            current_character in "*+?"
-            and definition[i - 1] != ")"
-            and not (in_regex or in_quote)
-        ):
-            symbol = "".join(current) if current else result.pop()
-            result.extend(
-                [
-                    _MAP_TO_STANDARD[current_character][0],
-                    symbol,
-                    _MAP_TO_STANDARD[current_character][1],
-                ]
-            )
-            current.clear()
+            i += 1  # Skip the quantifier.
 
-        # Dealing with special delimiters.
-        elif current_character in "()[]{}<>" and not in_quote and not in_regex:
-            # Separating delimiters from non-terminal symbols.
-            if current:
-                result.append("".join(current))
-                current.clear()
-            result.append(current_character)
+        # === STANDALONE QUANTIFIER: symbol* -> [symbol] ===
+        elif char in QUANTIFIERS and not in_quote and not in_regex:
+            if peek(-1) != ")":
+                # Wrap previous symbol in brackets.
+                symbol = (
+                    "".join(lexeme) if lexeme else lexemes.pop()
+                )  # Accumulated, not yet consumed lexeme, or consumed `/.../` or `"..."`.
+                lexeme.clear()
 
-        # Dealing with quotes.
-        elif current_character == '"':
-            if in_regex:
-                current.append('"')
-
-            elif is_escaped_quote:
-                current.append('"')
-                is_escaped_quote = not is_escaped_quote
-
-            elif in_quote:
-                current.append('"')
-                result.append("".join(current))
-                current.clear()
-                in_quote = not in_quote
-
+                open_br, close_br = QUANTIFIERS[char]
+                lexemes.extend([open_br, symbol, close_br])
             else:
-                if current:
-                    result.append("".join(current))
-                    current.clear()
-                current.append(current_character)
-                in_quote = not in_quote
+                # `*, +, ?` as first elements.
+                pass
 
-        # Dealing with spaces.
-        elif current_character.isspace():
-            if not in_quote and not in_regex:
-                if current:
-                    result.append("".join(current))
-                    current.clear()
+        # === DELIMITERS ===
+        elif char in DELIMITERS and not in_quote and not in_regex:
+            consume_lexeme()
+            lexemes.append(char)
 
+        # === WHITESPACE ===
+        elif char.isspace():
+            if in_quote or in_regex:
+                lexeme.append(char)
             else:
-                current.append(current_character)
+                consume_lexeme()
 
+        # === REGULAR CHARACTERS ===
         else:
-            current.append(current_character)
+            lexeme.append(char)
 
         i += 1
 
-    if current:
-        result.append("".join(current))
+    consume_lexeme()
 
     if in_quote:
         raise MissingQuote(
-            'Quote `"` is missing, terminals should be expressed as "<terminal_name>".'
+            'Unclosed quote: terminals must be expressed as "<terminal>".'
         )
 
     if in_regex:
         raise MissingSlash(
-            "Slash `/` is missing, regex should be expressed as /<regex_content>/."
+            "Unclosed regex: expressions must be expressed as /<pattern>/."
         )
 
-    return result
+    return lexemes
 
 
 def _parse_regex(lexemes: list[str]):
@@ -329,7 +310,7 @@ def _adjust_regex_delimiters(lexemes: list[str]):
         i += 1
 
 
-def _adjust_regex_backreferences(lexemes: list[str]) -> None:
+def adjust_regex_backreferences(lexemes: list[str]) -> None:
     regex_references_details: dict[int, list[tuple[int, int, int]]] = defaultdict(list)
     outer_open_bracket_count, inner_open_bracket_count = 0, 0
 
@@ -408,7 +389,7 @@ def definition_into_lexeme_queue(definition: str) -> Deque[str]:
     if int(os.getenv("PARSE_BREFS", 1)):
         # Backreference is supported on the whole EBNF format, thus, we must adjust
         # the reference on the regex side.
-        _adjust_regex_backreferences(lexemes)
+        adjust_regex_backreferences(lexemes)
 
     if int(os.getenv("PARSE_REGEX", 1)):
         lexemes = _parse_regex(lexemes)
