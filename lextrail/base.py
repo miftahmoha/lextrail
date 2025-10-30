@@ -3,9 +3,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import Enum
 from itertools import chain
-from typing import Any, TypeVar
-
-T = TypeVar("T")
+from typing import Any
 
 
 class SymbolType(Enum):
@@ -37,13 +35,6 @@ class Symbol:
             "id": str(self.s_id),
             "type": str(self.s_type),
         }
-
-
-class SymbolGraphType(Enum):
-    STANDARD = 1
-    NONE_ANY = 2
-    ONCE_ANY = 3
-    NONE_ONCE = 4
 
 
 @dataclass(slots=True)

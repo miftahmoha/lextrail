@@ -1,15 +1,13 @@
+from collections import deque
+from dataclasses import dataclass, field
+from enum import Enum
+from os import getenv
 from typing import Any, Deque, Dict, List
 
-from lextrail.base import Symbol, SymbolGraph, SymbolGraphType, SymbolType
+from lextrail.base import Symbol, SymbolGraph, SymbolType
 from lextrail.build.passes import build_symbol_from_lexeme, definition_into_lexeme_queue
 from lextrail.exceptions import BuildError
-from lextrail.helpers import (
-    contains_end_def_symbol,
-    get_end_def_symbols,
-    get_symbol_predecessors,
-    is_end_def_symbol,
-    remove_single_nodes,
-)
+from lextrail.helpers import is_end_def_symbol, remove_single_nodes, safe_node_connect
 
 
 def construct_symbol_subgraph(
@@ -61,6 +59,26 @@ def construct_symbol_subgraph(
     return symbol_graph
 
 
+def construct_symbol_graph(lexemes: list[str]):
+    symbol_graph = SymbolGraph()
+
+    if not lexemes:
+        return symbol_graph
+
+    previous = build_symbol_from_lexeme(lexemes[0])
+    symbol_graph.initials = [previous]
+    symbol_graph.tree[previous]
+
+    for lexeme in lexemes[1:]:
+        next = build_symbol_from_lexeme(lexeme)
+        symbol_graph.tree[previous] = [next]
+        previous = next
+
+    symbol_graph.finals = [previous]
+
+    return symbol_graph
+
+
 def connect_symbol_graph(
     symbol_graph_lhs: SymbolGraph,
     symbol_graph_rhs: SymbolGraph,
@@ -74,64 +92,60 @@ def connect_symbol_graph(
     elif not symbol_graph_rhs.tree:
         return symbol_graph_lhs
 
-    symbol_graph_initials_out, symbol_graph_finals_out = (
-        symbol_graph_lhs.initials,
-        symbol_graph_rhs.finals,
-    )
-
-    # Single node symbols will connect through the `initials` and `finals` attributes.
     symbol_graph_lhs.tree = remove_single_nodes(symbol_graph_lhs.tree)
     symbol_graph_rhs.tree = remove_single_nodes(symbol_graph_rhs.tree)
 
     symbol_graph_tree_out = symbol_graph_lhs.tree | symbol_graph_rhs.tree
 
-    # Allow skipping rule, search for `END_DEF` symbols that are not finals but were once initials
-    # for "NONE_ANY" and "NONE_ONCE" symbol graphs.
-    # [TODO] Could construct one list that contains all "END_DEF" symbols, it'll remove the need
-    # to go through the `symbol_graph_lhs_copy.finals` below. Keep modularity and separation
-    # between both "END_DEF" symbols for the moment.
-    once_end_def_symbols_in_initials = [
-        symbol for symbol in symbol_graph_lhs.initials if is_end_def_symbol(symbol)
-    ]
+    if int(getenv("SKIP_RULE", 1)):
+        end_def_symbols = [
+            symbol for symbol in symbol_graph_lhs.finals if is_end_def_symbol(symbol)
+        ]
 
-    assert len(once_end_def_symbols_in_initials) in [
-        0,
-        1,
-    ], "Duplicate `END_DEF` symbol in initials."
+        assert len(end_def_symbols) <= 1, "Duplicate `END` final symbols."
 
-    if len(once_end_def_symbols_in_initials) == 1:
-        symbol_graph_lhs.initials.remove(once_end_def_symbols_in_initials[0])
-        symbol_graph_lhs.initials.extend(symbol_graph_rhs.initials)
+        for end_def_symbol in end_def_symbols:
+            predecessors = [
+                parent
+                for parent, children in symbol_graph_lhs.tree.items()
+                if end_def_symbol in children
+            ]
+
+            for predecessor in predecessors:
+                symbol_graph_lhs.tree[predecessor].remove(end_def_symbol)
+
+            symbol_graph_lhs.finals.remove(end_def_symbol)
+            symbol_graph_lhs.finals.extend(predecessors)
+
+        end_def_symbols = [
+            symbol for symbol in symbol_graph_lhs.initials if is_end_def_symbol(symbol)
+        ]
+
+        assert len(end_def_symbols) <= 1, "Duplicate `END` initial symbols."
+
+        for end_def_symbol in end_def_symbols:
+            symbol_graph_lhs.initials.remove(end_def_symbol)
+            symbol_graph_lhs.initials += symbol_graph_rhs.initials
+
+    symbol_graph_initials_out, symbol_graph_finals_out = (
+        symbol_graph_lhs.initials,
+        symbol_graph_rhs.finals,
+    )
 
     for symbol_final in symbol_graph_lhs.finals:
-        symbol_predecessors = []
+        for symbol_initial in symbol_graph_rhs.initials:
+            # [NOTE] Graphs of kind `NONE_ONCE` have their `END_DEF` symbol as initials, if
+            # a graph connects them from the left, then the `END_DEF` symbol must be added to the
+            # finals.
+            # Not only it's a logical implication, but it allows to not lose track of the `END_DEF`
+            # symbol for the next connections.
+            if (
+                is_end_def_symbol(symbol_initial)
+                and symbol_initial not in symbol_graph_rhs.finals
+            ):
+                symbol_graph_rhs.finals.append(symbol_initial)
 
-        if is_end_def_symbol(symbol_final):
-            symbol_predecessors = get_symbol_predecessors(
-                symbol_graph_tree_out, symbol_final
-            )
-
-            for symbol_predecessor in symbol_predecessors:
-                symbol_graph_tree_out[symbol_predecessor].remove(symbol_final)
-
-        symbol_finals = symbol_predecessors if symbol_predecessors else [symbol_final]
-
-        for symbol_final_ in symbol_finals:
-            for symbol_initial in symbol_graph_rhs.initials:
-                # `END_DEF` should always be final symbols, duplication in finals
-                # is not an issue when the predecessors are distinct. However, duplicates
-                # in initials is an issue, since they have no successors, nor predecessors.
-                # [NOTE] Not really, since at some point, we do mutate the predecessors of
-                # `END_DEF` symbols to connect to somewhere else. Getting the predecessors
-                # the next time will lead to an error. Could be fixed later, a set will
-                # eventually be used instead of a list.
-                if (
-                    is_end_def_symbol(symbol_initial)
-                    and symbol_initial not in symbol_graph_finals_out
-                ):
-                    symbol_graph_finals_out.append(symbol_initial)
-
-                symbol_graph_tree_out[symbol_final_].append(symbol_initial)
+            safe_node_connect(symbol_graph_tree_out, symbol_final, symbol_initial)
 
     return SymbolGraph(
         initials=symbol_graph_initials_out,
@@ -153,128 +167,148 @@ def union_symbol_graph(
     elif not symbol_graph_rhs.tree:
         return symbol_graph_lhs
 
-    # Avoid duplicate `END_DEF` symbols in the initials.
-    if contains_end_def_symbol(symbol_graph_lhs.initials) and contains_end_def_symbol(
-        symbol_graph_rhs.initials
-    ):
-        symbol_special_eos_symbols_rhs = get_end_def_symbols(symbol_graph_rhs.initials)
-        symbol_graph_rhs.initials.remove(symbol_special_eos_symbols_rhs[0])
+    symbol_graph_tree_out = symbol_graph_lhs.tree | symbol_graph_rhs.tree
+
+    # Remove duplicate `END` symbols in the initials.
+    end_def_symbols_lhs, end_def_symbols_rhs = (
+        [symbol for symbol in symbol_graph_lhs.initials if is_end_def_symbol(symbol)],
+        [symbol for symbol in symbol_graph_rhs.initials if is_end_def_symbol(symbol)],
+    )
+
+    assert (
+        len(end_def_symbols_lhs) <= 1 and len(end_def_symbols_rhs) <= 1
+    ), f"Duplicate `END` initial symbols {end_def_symbols_lhs} and {end_def_symbols_rhs}."
+
+    if end_def_symbols_lhs and end_def_symbols_rhs:
+        symbol_graph_rhs.initials.remove(end_def_symbols_rhs[0])
+
+    # Remove duplicate `END` symbols in the finals.
+    end_def_symbols_lhs, end_def_symbols_rhs = (
+        [symbol for symbol in symbol_graph_lhs.finals if is_end_def_symbol(symbol)],
+        [symbol for symbol in symbol_graph_rhs.finals if is_end_def_symbol(symbol)],
+    )
+
+    assert (
+        len(end_def_symbols_lhs) <= 1 and len(end_def_symbols_rhs) <= 1
+    ), "Duplicate `END` final symbols."
+
+    if end_def_symbols_lhs and end_def_symbols_rhs:
+        predecessors = [
+            parent
+            for parent, children in symbol_graph_rhs.tree.items()
+            if end_def_symbols_rhs[0] in children
+        ]
+
+        for predecessor in predecessors:
+            symbol_graph_tree_out[predecessor].remove(end_def_symbols_rhs[0])
+            symbol_graph_tree_out[predecessor].append(end_def_symbols_lhs[0])
+
+        symbol_graph_rhs.finals.remove(end_def_symbols_rhs[0])
 
     return SymbolGraph(
         initials=symbol_graph_lhs.initials + symbol_graph_rhs.initials,
-        tree=symbol_graph_lhs.tree | symbol_graph_rhs.tree,
+        tree=symbol_graph_tree_out,
         finals=symbol_graph_lhs.finals + symbol_graph_rhs.finals,
     )
 
 
-def cast_symbol_graph(
-    symbol_graph: SymbolGraph,
-    cast_type: SymbolGraphType,
-) -> SymbolGraph:
-    if cast_type == SymbolGraphType.NONE_ANY:
-        # (1) Add a `END_DEF` to the `initials`, since it can be `NONE`.
-        # (2) Add a loop since it's a `(A..Z)*` expression, last element `Z` should connect to the first element `A`.
-        # Should add a `END_DEF` to `A` and `Z` (symbols should be different),
-        # if `Z` is not connected to any node (always add it, if it's connected to some node remove it afterwards while connecting the graphs)
-        # How?
-        # During connection, we'll have `END_DEF` -> `Node` -> replace `END_DEF` with the predecessor of `END_DEF`, disconnect predecessor from 'END_DEF`.
-        # Each node has a unique identifier, so we'll always be able to track the right predecessor.
-        for symbol_final in symbol_graph.finals:
-            symbol_predecessors = []
-            if is_end_def_symbol(symbol_final):
-                symbol_predecessors = get_symbol_predecessors(
-                    symbol_graph.tree, symbol_final
-                )
-            symbol_finals = (
-                symbol_predecessors if symbol_predecessors else [symbol_final]
-            )
-            for symbol_initial in symbol_graph.initials:
-                if is_end_def_symbol(symbol_initial):
-                    continue
-                for symbol_final in symbol_finals:
-                    # We should make sure there are no duplicates connections, if the cast
-                    # is applied multiple times.
-                    if symbol_initial not in symbol_graph.tree[symbol_final]:
-                        symbol_graph.tree[symbol_final].append(symbol_initial)
+class SymbolGraph_Kind(Enum):
+    DEFAULT = 1
+    NONE_ANY = 2
+    ONCE_ANY = 4
+    NONE_ONCE = 3
+    OR = 5
 
-        if contains_end_def_symbol(symbol_graph.initials) and contains_end_def_symbol(
-            symbol_graph.finals
-        ):
-            return symbol_graph
 
-        if not contains_end_def_symbol(symbol_graph.initials):
-            symbol_special_eos_initial = Symbol("END_DEF", SymbolType.SPECIAL)
-            symbol_graph.initials.append(symbol_special_eos_initial)
-            symbol_graph.tree[symbol_special_eos_initial]
+def cast_symbol_graph(symbol_graph: SymbolGraph, kind: SymbolGraph_Kind):
+    if kind == SymbolGraph_Kind.DEFAULT:
+        return symbol_graph
 
-        if not contains_end_def_symbol(symbol_graph.finals):
-            symbol_special_eos_final = Symbol("END_DEF", SymbolType.SPECIAL)
-            for symbol_final in symbol_graph.finals:
-                symbol_graph.tree[symbol_final].append(symbol_special_eos_final)
-            symbol_graph.tree[symbol_special_eos_final]
-            symbol_graph.finals = [symbol_special_eos_final]
+    elif kind == SymbolGraph_Kind.NONE_ANY:
+        initials, tree, finals = (
+            symbol_graph.initials,
+            symbol_graph.tree,
+            symbol_graph.finals,
+        )
+
+        # [NOTE] Avoids duplicated `END_DEF` symbols that could come from either:
+        # (1) NONE_ANY: `END_DEF` would be in both the initials and finals.
+        # (2) ONCE_ANY: `END_DEF` would be in the finals.
+        # (3) NONE_ONCE: `END_DEF` would be in the initials.
+        end_def_symbol = (
+            next((s for s in initials if is_end_def_symbol(s)), None)
+            or next((s for s in finals if is_end_def_symbol(s)), None)
+            or initials.append(Symbol("END_DEF", SymbolType.SPECIAL))  # type: ignore
+            or initials[-1]
+        )
+
+        # Need to re-establish the loop for mixed graphs built through unions.
+        finals += (
+            [parent for parent, children in tree.items() if end_def_symbol in children]
+            if end_def_symbol in finals
+            else []
+        )
+
+        for final in finals:
+            for initial in initials:
+                # Nested casts would lead to duplicates.
+                safe_node_connect(tree, final, initial)
+
+        symbol_graph.finals = [end_def_symbol]
 
         return symbol_graph
 
-    elif cast_type == SymbolGraphType.ONCE_ANY:
-        # Same approach as `NONE_ANY`.
-        for symbol_final in symbol_graph.finals:
-            symbol_predecessors = []
-            if is_end_def_symbol(symbol_final):
-                symbol_predecessors = get_symbol_predecessors(
-                    symbol_graph.tree, symbol_final
-                )
-            symbol_finals = (
-                symbol_predecessors if symbol_predecessors else [symbol_final]
-            )
-            for symbol_initial in symbol_graph.initials:
-                if is_end_def_symbol(symbol_initial):
-                    continue
-                for symbol_final in symbol_finals:
-                    # We should make sure there are no duplicates connections, if the cast
-                    # is applied multiple times.
-                    if symbol_initial not in symbol_graph.tree[symbol_final]:
-                        symbol_graph.tree[symbol_final].append(symbol_initial)
+    elif kind == SymbolGraph_Kind.NONE_ONCE:
+        initials, tree = symbol_graph.initials, symbol_graph.tree
 
-        # Difference resides in not having an `END_DEF` as an initial.
-        if not contains_end_def_symbol(
-            symbol_graph.initials
-        ) and contains_end_def_symbol(symbol_graph.finals):
-            return symbol_graph
+        end_def_symbol = (
+            next((s for s in initials if is_end_def_symbol(s)), None)
+            or initials.append(Symbol("END_DEF", SymbolType.SPECIAL))  # type: ignore
+            or initials[-1]
+        )
 
-        if contains_end_def_symbol(symbol_graph.initials):
-            initial_end_def_symbols = get_end_def_symbols(symbol_graph.initials)
-            assert (
-                len(initial_end_def_symbols) == 1
-            ), "Initials should contain one `END_DEF` symbol"
-            symbol_graph.initials.remove(initial_end_def_symbols[0])
-            del symbol_graph.tree[initial_end_def_symbols[0]]
-
-        # Same as `NONE_ANY`.
-        if not contains_end_def_symbol(symbol_graph.finals):
-            symbol_special_eos_final = Symbol("END_DEF", SymbolType.SPECIAL)
-            for symbol_final in symbol_graph.finals:
-                symbol_graph.tree[symbol_final].append(symbol_special_eos_final)
-            symbol_graph.finals = []
-            symbol_graph.finals.append(symbol_special_eos_final)
+        tree[end_def_symbol] = []
 
         return symbol_graph
 
-    elif cast_type == SymbolGraphType.NONE_ONCE:
-        for symbol_initial in symbol_graph.initials:
-            if is_end_def_symbol(symbol_initial):
-                return symbol_graph
+    elif kind == SymbolGraph_Kind.ONCE_ANY:
+        initials, tree, finals = (
+            symbol_graph.initials,
+            symbol_graph.tree,
+            symbol_graph.finals,
+        )
 
-        symbol_special_eos_initial = Symbol("END_DEF", SymbolType.SPECIAL)
-        symbol_graph.initials.append(symbol_special_eos_initial)
-        symbol_graph.tree[symbol_special_eos_initial]
-        return symbol_graph
+        # Avoids duplicated `END_DEF` symbols that could come from either:
+        # (1) NONE_ANY: `END_DEF` would be in both the initials and finals.
+        # (2) ONCE_ANY: `END_DEF` would be in the finals.
+        # (3) NONE_ONCE: `END_DEF` would be in the initials
+        end_def_symbol = (
+            next((s for s in initials if is_end_def_symbol(s)), None)
+            or next((s for s in finals if is_end_def_symbol(s)), None)
+            or Symbol("END_DEF", SymbolType.SPECIAL)
+        )
 
-    elif cast_type == SymbolGraphType.STANDARD:
+        # Need to re-establish the loop for mixed graphs built through unions.
+        finals += (
+            [parent for parent, children in tree.items() if end_def_symbol in children]
+            if end_def_symbol in finals
+            else []
+        )
+
+        for final in finals:
+            for initial in initials:
+                # Nested casts would lead to duplicates.
+                safe_node_connect(tree, final, initial)
+
+            # Nested casts would lead to duplicates.
+            safe_node_connect(tree, final, end_def_symbol)
+
+        symbol_graph.finals = [end_def_symbol]
+
         return symbol_graph
 
     else:
-        raise BuildError(f"Invalid cast {cast_type}.")
+        raise BuildError(f"Invalid cast {kind}.")
 
 
 def build_symbol_graph(
@@ -362,13 +396,13 @@ def build_symbol_graph(
 
             if str_symbol in (")", "]", ">", "}"):
                 if str_symbol == ")":
-                    SYMBOL_GRAPH_TYPE = SymbolGraphType.STANDARD
+                    SYMBOL_GRAPH_TYPE = SymbolGraph_Kind.DEFAULT
                 elif str_symbol == "}":
-                    SYMBOL_GRAPH_TYPE = SymbolGraphType.NONE_ANY
+                    SYMBOL_GRAPH_TYPE = SymbolGraph_Kind.NONE_ANY
                 elif str_symbol == ">":
-                    SYMBOL_GRAPH_TYPE = SymbolGraphType.ONCE_ANY
+                    SYMBOL_GRAPH_TYPE = SymbolGraph_Kind.ONCE_ANY
                 elif str_symbol == "]":
-                    SYMBOL_GRAPH_TYPE = SymbolGraphType.NONE_ONCE
+                    SYMBOL_GRAPH_TYPE = SymbolGraph_Kind.NONE_ONCE
 
                 # Handles the case where there exist no opening `("(", "[", "{")` delimiter next to '|.
                 # Example: (_1 `def_1` {_2 `def_2` 2_} `def_4` | `def_3` 1_), with `def_4` which could be empty.
@@ -477,3 +511,55 @@ def build_symbol_graph(
     symbol_graph.metadata["_COUNT_TO_DEPTH"] = _GLOBAL_COUNT_TO_DEPTH.copy()
 
     return symbol_graph
+
+
+@dataclass(slots=True)
+class Accumulator:
+    graph: SymbolGraph = field(default_factory=lambda: SymbolGraph())
+    kind: SymbolGraph_Kind = SymbolGraph_Kind.DEFAULT
+
+
+def build_symbol_graph_New(symbol_def: str):
+    LEXEME_TO_KIND = {
+        "(": SymbolGraph_Kind.DEFAULT,
+        "{": SymbolGraph_Kind.NONE_ANY,
+        "[": SymbolGraph_Kind.NONE_ONCE,
+        "<": SymbolGraph_Kind.ONCE_ANY,
+        "|": SymbolGraph_Kind.OR,
+    }
+
+    lexemes = definition_into_lexeme_queue(symbol_def)
+    state: Deque[Accumulator] = deque([Accumulator()])
+    current_accumulated_lexemes: list[str] = []
+
+    while lexemes:
+        lexeme = lexemes.popleft()
+
+        if lexeme in "([{<|":
+            accumulated_graph = construct_symbol_graph(current_accumulated_lexemes)
+            state[-1].graph = connect_symbol_graph(state[-1].graph, accumulated_graph)
+            current_accumulated_lexemes.clear()
+
+            state.append(Accumulator(SymbolGraph(), LEXEME_TO_KIND[lexeme]))
+
+        elif lexeme in ")]}>":
+            accumulated_graph = construct_symbol_graph(current_accumulated_lexemes)
+            state[-1].graph = connect_symbol_graph(state[-1].graph, accumulated_graph)
+            current_accumulated_lexemes.clear()
+
+            consumer = state.pop()
+            while consumer.kind == SymbolGraph_Kind.OR:
+                state[-1].graph = union_symbol_graph(state[-1].graph, consumer.graph)
+                consumer = state.pop()
+
+            state[-1].graph = connect_symbol_graph(
+                state[-1].graph,
+                cast_symbol_graph(consumer.graph, consumer.kind),
+            )
+
+        else:
+            current_accumulated_lexemes.append(lexeme)
+
+    assert len(state) == 1, "Only one consumer should remain."
+
+    return state.pop().graph
