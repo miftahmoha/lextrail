@@ -1,13 +1,7 @@
 import pytest
 
 from lextrail.exceptions import InvalidRegex
-from lextrail.regex import (
-    _regex_expand_pass,
-    _regex_negate_pass,
-    _regex_normalize_pass,
-    _regex_split_pass,
-    _regex_terminalize_pass,
-)
+from lextrail.regex import re_expand, re_norm, re_split
 
 
 @pytest.fixture
@@ -17,35 +11,53 @@ def regex_email():
 
 
 def test_regex_email(regex_email: str):
-    split_pass_out = _regex_split_pass(regex_email)
-    assert split_pass_out == [
+    split = re_split(regex_email)
+    assert split == [
         "[",
-        "a-z",
-        "A-Z",
-        "0-9",
+        "a",
+        "-",
+        "z",
+        "A",
+        "-",
+        "Z",
+        "0",
+        "-",
+        "9",
         "_\\.\\+\\-",
         "]",
         "+",
         "@",
         "[",
-        "a-z",
-        "A-Z",
-        "0-9",
+        "a",
+        "-",
+        "z",
+        "A",
+        "-",
+        "Z",
+        "0",
+        "-",
+        "9",
         "\\-",
         "]",
         "+",
         "\\.",
         "[",
-        "a-z",
-        "A-Z",
-        "0-9",
+        "a",
+        "-",
+        "z",
+        "A",
+        "-",
+        "Z",
+        "0",
+        "-",
+        "9",
         "\\-\\.",
         "]",
         "+",
     ]
 
-    expand_pass_out = _regex_expand_pass(split_pass_out)
-    assert expand_pass_out == [
+    expand = re_expand(split)
+    assert expand == [
         "[",
         "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_\\.\\+\\-",
         "]",
@@ -62,46 +74,25 @@ def test_regex_email(regex_email: str):
         "+",
     ]
 
-    negate_pass_out = _regex_negate_pass(expand_pass_out)
-    assert negate_pass_out == expand_pass_out
-
-    normalize_pass_out = _regex_normalize_pass(negate_pass_out)
-    # [NOTE] Rust escapes `escapable` characters inside `[]`, [\+] will only match `+`.
-    assert normalize_pass_out == [
-        "(",
-        "a|b|c|d|e|f|g|h|i|j|k|l|m|n|o|p|q|r|s|t|u|v|w|x|y|z|A|B|C|D|E|F|G|H|I|J|K|L|M|N|O|P|Q|R|S|T|U|V|W|X|Y|Z|0|1|2|3|4|5|6|7|8|9|_|\\.|\\+|\\-",
-        ")",
-        "+",
-        "@",
-        "(",
-        "a|b|c|d|e|f|g|h|i|j|k|l|m|n|o|p|q|r|s|t|u|v|w|x|y|z|A|B|C|D|E|F|G|H|I|J|K|L|M|N|O|P|Q|R|S|T|U|V|W|X|Y|Z|0|1|2|3|4|5|6|7|8|9|\\-",
-        ")",
-        "+",
-        "\\.",
-        "(",
-        "a|b|c|d|e|f|g|h|i|j|k|l|m|n|o|p|q|r|s|t|u|v|w|x|y|z|A|B|C|D|E|F|G|H|I|J|K|L|M|N|O|P|Q|R|S|T|U|V|W|X|Y|Z|0|1|2|3|4|5|6|7|8|9|\\-|\\.",
-        ")",
-        "+",
-    ]
-
-    terminalize_pass_out = _regex_terminalize_pass(
-        normalize_pass_out, _IS_TEST_VERSION=True
-    )
-    assert terminalize_pass_out == [
+    norm = re_norm(expand)
+    assert norm == [
+        "{",
         "(",
         '"a"|"b"|"c"|"d"|"e"|"f"|"g"|"h"|"i"|"j"|"k"|"l"|"m"|"n"|"o"|"p"|"q"|"r"|"s"|"t"|"u"|"v"|"w"|"x"|"y"|"z"|"A"|"B"|"C"|"D"|"E"|"F"|"G"|"H"|"I"|"J"|"K"|"L"|"M"|"N"|"O"|"P"|"Q"|"R"|"S"|"T"|"U"|"V"|"W"|"X"|"Y"|"Z"|"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"|"_"|"."|"+"|"-"',
         ")",
-        "+",
+        "}",
         '"@"',
+        "{",
         "(",
         '"a"|"b"|"c"|"d"|"e"|"f"|"g"|"h"|"i"|"j"|"k"|"l"|"m"|"n"|"o"|"p"|"q"|"r"|"s"|"t"|"u"|"v"|"w"|"x"|"y"|"z"|"A"|"B"|"C"|"D"|"E"|"F"|"G"|"H"|"I"|"J"|"K"|"L"|"M"|"N"|"O"|"P"|"Q"|"R"|"S"|"T"|"U"|"V"|"W"|"X"|"Y"|"Z"|"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"|"-"',
         ")",
-        "+",
+        "}",
         '"."',
+        "{",
         "(",
         '"a"|"b"|"c"|"d"|"e"|"f"|"g"|"h"|"i"|"j"|"k"|"l"|"m"|"n"|"o"|"p"|"q"|"r"|"s"|"t"|"u"|"v"|"w"|"x"|"y"|"z"|"A"|"B"|"C"|"D"|"E"|"F"|"G"|"H"|"I"|"J"|"K"|"L"|"M"|"N"|"O"|"P"|"Q"|"R"|"S"|"T"|"U"|"V"|"W"|"X"|"Y"|"Z"|"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"|"-"|"."',
         ")",
-        "+",
+        "}",
     ]
 
 
@@ -112,8 +103,8 @@ def regex_phone_number():
 
 
 def test_regex_phone_number(regex_phone_number: str):
-    split_pass_out = _regex_split_pass(regex_phone_number)
-    assert split_pass_out == [
+    split = re_split(regex_phone_number)
+    assert split == [
         "\\(",
         "\\d",
         "{",
@@ -131,8 +122,8 @@ def test_regex_phone_number(regex_phone_number: str):
         "}",
     ]
 
-    expand_pass_out = _regex_expand_pass(split_pass_out)
-    assert expand_pass_out == [
+    expand = re_expand(split)
+    assert expand == [
         "\\(",
         "[",
         "0123456789",
@@ -156,50 +147,8 @@ def test_regex_phone_number(regex_phone_number: str):
         "}",
     ]
 
-    negate_pass_out = _regex_negate_pass(expand_pass_out)
-    assert negate_pass_out == expand_pass_out
-
-    normalize_pass_out = _regex_normalize_pass(negate_pass_out)
-    assert normalize_pass_out == [
-        "\\(",
-        "(",
-        "0|1|2|3|4|5|6|7|8|9",
-        ")",
-        "(",
-        "0|1|2|3|4|5|6|7|8|9",
-        ")",
-        "(",
-        "0|1|2|3|4|5|6|7|8|9",
-        ")",
-        "\\) ",
-        "(",
-        "0|1|2|3|4|5|6|7|8|9",
-        ")",
-        "(",
-        "0|1|2|3|4|5|6|7|8|9",
-        ")",
-        "(",
-        "0|1|2|3|4|5|6|7|8|9",
-        ")",
-        "\\-",
-        "(",
-        "0|1|2|3|4|5|6|7|8|9",
-        ")",
-        "(",
-        "0|1|2|3|4|5|6|7|8|9",
-        ")",
-        "(",
-        "0|1|2|3|4|5|6|7|8|9",
-        ")",
-        "(",
-        "0|1|2|3|4|5|6|7|8|9",
-        ")",
-    ]
-
-    terminalize_pass_out = _regex_terminalize_pass(
-        normalize_pass_out, _IS_TEST_VERSION=True
-    )
-    assert terminalize_pass_out == [
+    norm = re_norm(expand)
+    assert norm == [
         '"("',
         "(",
         '"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"',
@@ -239,26 +188,29 @@ def test_regex_phone_number(regex_phone_number: str):
 @pytest.fixture
 def regex_url():
     """Regex to match URLs."""
-    return r"^(https?:\/\/)?([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}(\/[a-zA-Z0-9-._?&=]*)*$"
+    return r"^(https?:\/\/)?([a-fA-F0-5-]+\.)+[a-fA-F]{2,}(\/[a-fA-F0-5-._?&=]*)*$"
 
 
 def test_regex_url(regex_url: str):
-    split_pass_out = _regex_split_pass(regex_url)
-    assert split_pass_out == [
+    split = re_split(regex_url)
+    assert split == [
         "(",
-        "http",
-        "(",
-        "s",
-        ")",
+        "https",
         "?",
-        ":\\/\\/",
+        "://",
         ")",
         "?",
         "(",
         "[",
-        "a-z",
-        "A-Z",
-        "0-9",
+        "a",
+        "-",
+        "f",
+        "A",
+        "-",
+        "F",
+        "0",
+        "-",
+        "5",
         "\\-",
         "]",
         "+",
@@ -266,18 +218,28 @@ def test_regex_url(regex_url: str):
         ")",
         "+",
         "[",
-        "a-z",
-        "A-Z",
+        "a",
+        "-",
+        "f",
+        "A",
+        "-",
+        "F",
         "]",
         "{",
         "2,",
         "}",
         "(",
-        "\\/",
+        "/",
         "[",
-        "a-z",
-        "A-Z",
-        "0-9",
+        "a",
+        "-",
+        "f",
+        "A",
+        "-",
+        "F",
+        "0",
+        "-",
+        "5",
         "\\-\\._\\?&=",
         "]",
         "*",
@@ -285,122 +247,86 @@ def test_regex_url(regex_url: str):
         "*",
     ]
 
-    expand_pass_out = _regex_expand_pass(split_pass_out)
-    assert expand_pass_out == [
+    expand = re_expand(split)
+    assert expand == [
         "(",
-        "http",
-        "(",
-        "s",
-        ")",
+        "https",
         "?",
-        ":\\/\\/",
+        "://",
         ")",
         "?",
         "(",
         "[",
-        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789\\-",
+        "abcdefABCDEF012345\\-",
         "]",
         "+",
         "\\.",
         ")",
         "+",
         "[",
-        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
+        "abcdefABCDEF",
         "]",
         "{",
         "2,",
         "}",
         "(",
-        "\\/",
+        "/",
         "[",
-        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789\\-\\._\\?&=",
+        "abcdefABCDEF012345\\-\\._\\?&=",
         "]",
         "*",
         ")",
         "*",
     ]
 
-    negate_pass_out = _regex_negate_pass(expand_pass_out)
-    assert negate_pass_out == expand_pass_out
-
-    normalize_pass_out = _regex_normalize_pass(expand_pass_out)
-    assert normalize_pass_out == [
-        "(",
-        "http",
-        "(",
-        "s",
-        ")",
-        "?",
-        ":\\/\\/",
-        ")",
-        "?",
-        "(",
-        "(",
-        "a|b|c|d|e|f|g|h|i|j|k|l|m|n|o|p|q|r|s|t|u|v|w|x|y|z|A|B|C|D|E|F|G|H|I|J|K|L|M|N|O|P|Q|R|S|T|U|V|W|X|Y|Z|0|1|2|3|4|5|6|7|8|9|\\-",
-        ")",
-        "+",
-        "\\.",
-        ")",
-        "+",
-        "(",
-        "a|b|c|d|e|f|g|h|i|j|k|l|m|n|o|p|q|r|s|t|u|v|w|x|y|z|A|B|C|D|E|F|G|H|I|J|K|L|M|N|O|P|Q|R|S|T|U|V|W|X|Y|Z",
-        ")",
-        "(",
-        "a|b|c|d|e|f|g|h|i|j|k|l|m|n|o|p|q|r|s|t|u|v|w|x|y|z|A|B|C|D|E|F|G|H|I|J|K|L|M|N|O|P|Q|R|S|T|U|V|W|X|Y|Z",
-        ")",
-        "(",
-        "a|b|c|d|e|f|g|h|i|j|k|l|m|n|o|p|q|r|s|t|u|v|w|x|y|z|A|B|C|D|E|F|G|H|I|J|K|L|M|N|O|P|Q|R|S|T|U|V|W|X|Y|Z",
-        ")",
-        "*",
-        "(",
-        "\\/",
-        "(",
-        "a|b|c|d|e|f|g|h|i|j|k|l|m|n|o|p|q|r|s|t|u|v|w|x|y|z|A|B|C|D|E|F|G|H|I|J|K|L|M|N|O|P|Q|R|S|T|U|V|W|X|Y|Z|0|1|2|3|4|5|6|7|8|9|\\-|\\.|_|\\?|&|=",
-        ")",
-        "*",
-        ")",
-        "*",
-    ]
-
-    terminalize_pass_out = _regex_terminalize_pass(
-        normalize_pass_out, _IS_TEST_VERSION=True
-    )
-    assert terminalize_pass_out == [
+    norm = re_norm(expand)
+    assert norm == [
+        "[",
         "(",
         '"http"',
-        "(",
+        "[",
         '"s"',
-        ")",
-        "?",
+        "]",
         '"://"',
         ")",
-        "?",
+        "]",
+        "{",
         "(",
+        "{",
         "(",
-        '"a"|"b"|"c"|"d"|"e"|"f"|"g"|"h"|"i"|"j"|"k"|"l"|"m"|"n"|"o"|"p"|"q"|"r"|"s"|"t"|"u"|"v"|"w"|"x"|"y"|"z"|"A"|"B"|"C"|"D"|"E"|"F"|"G"|"H"|"I"|"J"|"K"|"L"|"M"|"N"|"O"|"P"|"Q"|"R"|"S"|"T"|"U"|"V"|"W"|"X"|"Y"|"Z"|"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"|"-"',
+        '"a"|"b"|"c"|"d"|"e"|"f"|"A"|"B"|"C"|"D"|"E"|"F"|"0"|"1"|"2"|"3"|"4"|"5"|"-"',
         ")",
-        "+",
+        "}",
         '"."',
         ")",
-        "+",
+        "}",
         "(",
-        '"a"|"b"|"c"|"d"|"e"|"f"|"g"|"h"|"i"|"j"|"k"|"l"|"m"|"n"|"o"|"p"|"q"|"r"|"s"|"t"|"u"|"v"|"w"|"x"|"y"|"z"|"A"|"B"|"C"|"D"|"E"|"F"|"G"|"H"|"I"|"J"|"K"|"L"|"M"|"N"|"O"|"P"|"Q"|"R"|"S"|"T"|"U"|"V"|"W"|"X"|"Y"|"Z"',
+        '"a"|"b"|"c"|"d"|"e"|"f"|"A"|"B"|"C"|"D"|"E"|"F"',
         ")",
         "(",
-        '"a"|"b"|"c"|"d"|"e"|"f"|"g"|"h"|"i"|"j"|"k"|"l"|"m"|"n"|"o"|"p"|"q"|"r"|"s"|"t"|"u"|"v"|"w"|"x"|"y"|"z"|"A"|"B"|"C"|"D"|"E"|"F"|"G"|"H"|"I"|"J"|"K"|"L"|"M"|"N"|"O"|"P"|"Q"|"R"|"S"|"T"|"U"|"V"|"W"|"X"|"Y"|"Z"',
+        '"a"|"b"|"c"|"d"|"e"|"f"|"A"|"B"|"C"|"D"|"E"|"F"',
         ")",
+        "{",
+        "[",
         "(",
-        '"a"|"b"|"c"|"d"|"e"|"f"|"g"|"h"|"i"|"j"|"k"|"l"|"m"|"n"|"o"|"p"|"q"|"r"|"s"|"t"|"u"|"v"|"w"|"x"|"y"|"z"|"A"|"B"|"C"|"D"|"E"|"F"|"G"|"H"|"I"|"J"|"K"|"L"|"M"|"N"|"O"|"P"|"Q"|"R"|"S"|"T"|"U"|"V"|"W"|"X"|"Y"|"Z"',
+        '"a"|"b"|"c"|"d"|"e"|"f"|"A"|"B"|"C"|"D"|"E"|"F"',
         ")",
-        "*",
+        "]",
+        "}",
+        "{",
+        "[",
         "(",
         '"/"',
+        "{",
+        "[",
         "(",
-        '"a"|"b"|"c"|"d"|"e"|"f"|"g"|"h"|"i"|"j"|"k"|"l"|"m"|"n"|"o"|"p"|"q"|"r"|"s"|"t"|"u"|"v"|"w"|"x"|"y"|"z"|"A"|"B"|"C"|"D"|"E"|"F"|"G"|"H"|"I"|"J"|"K"|"L"|"M"|"N"|"O"|"P"|"Q"|"R"|"S"|"T"|"U"|"V"|"W"|"X"|"Y"|"Z"|"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"|"-"|"."|"_"|"?"|"&"|"="',
+        '"a"|"b"|"c"|"d"|"e"|"f"|"A"|"B"|"C"|"D"|"E"|"F"|"0"|"1"|"2"|"3"|"4"|"5"|"-"|"."|"_"|"?"|"&"|"="',
         ")",
-        "*",
+        "]",
+        "}",
         ")",
-        "*",
+        "]",
+        "}",
     ]
 
 
@@ -411,8 +337,8 @@ def regex_date():
 
 
 def test_regex_date(regex_date: str):
-    split_pass_out = _regex_split_pass(regex_date)
-    assert split_pass_out == [
+    split = re_split(regex_date)
+    assert split == [
         "\\d",
         "{",
         "4",
@@ -429,8 +355,8 @@ def test_regex_date(regex_date: str):
         "}",
     ]
 
-    expand_pass_out = _regex_expand_pass(split_pass_out)
-    assert expand_pass_out == [
+    expand = re_expand(split)
+    assert expand == [
         "[",
         "0123456789",
         "]",
@@ -453,43 +379,8 @@ def test_regex_date(regex_date: str):
         "}",
     ]
 
-    negate_pass_out = _regex_negate_pass(expand_pass_out)
-    negate_pass_out = expand_pass_out
-
-    normalize_pass_out = _regex_normalize_pass(negate_pass_out)
-    assert normalize_pass_out == [
-        "(",
-        "0|1|2|3|4|5|6|7|8|9",
-        ")",
-        "(",
-        "0|1|2|3|4|5|6|7|8|9",
-        ")",
-        "(",
-        "0|1|2|3|4|5|6|7|8|9",
-        ")",
-        "(",
-        "0|1|2|3|4|5|6|7|8|9",
-        ")",
-        "\\-",
-        "(",
-        "0|1|2|3|4|5|6|7|8|9",
-        ")",
-        "(",
-        "0|1|2|3|4|5|6|7|8|9",
-        ")",
-        "\\-",
-        "(",
-        "0|1|2|3|4|5|6|7|8|9",
-        ")",
-        "(",
-        "0|1|2|3|4|5|6|7|8|9",
-        ")",
-    ]
-
-    terminalize_pass_out = _regex_terminalize_pass(
-        normalize_pass_out, _IS_TEST_VERSION=True
-    )
-    assert terminalize_pass_out == [
+    norm = re_norm(expand)
+    assert norm == [
         "(",
         '"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"',
         ")",
@@ -526,23 +417,35 @@ def regex_hex_color():
 
 
 def test_regex_hex_color(regex_hex_color: str):
-    split_pass_out = _regex_split_pass(regex_hex_color)
-    assert split_pass_out == [
+    split = re_split(regex_hex_color)
+    assert split == [
         "#",
         "(",
         "[",
-        "A-F",
-        "a-f",
-        "0-9",
+        "A",
+        "-",
+        "F",
+        "a",
+        "-",
+        "f",
+        "0",
+        "-",
+        "9",
         "]",
         "{",
         "6",
         "}",
         "|",
         "[",
-        "A-F",
-        "a-f",
-        "0-9",
+        "A",
+        "-",
+        "F",
+        "a",
+        "-",
+        "f",
+        "0",
+        "-",
+        "9",
         "]",
         "{",
         "3",
@@ -550,8 +453,8 @@ def test_regex_hex_color(regex_hex_color: str):
         ")",
     ]
 
-    expand_pass_out = _regex_expand_pass(split_pass_out)
-    assert expand_pass_out == [
+    expand = re_expand(split)
+    assert expand == [
         "#",
         "(",
         "[",
@@ -570,48 +473,8 @@ def test_regex_hex_color(regex_hex_color: str):
         ")",
     ]
 
-    negate_pass_out = _regex_negate_pass(expand_pass_out)
-    assert negate_pass_out == expand_pass_out
-
-    normalize_pass_out = _regex_normalize_pass(negate_pass_out)
-    assert normalize_pass_out == [
-        "#",
-        "(",
-        "(",
-        "A|B|C|D|E|F|a|b|c|d|e|f|0|1|2|3|4|5|6|7|8|9",
-        ")",
-        "(",
-        "A|B|C|D|E|F|a|b|c|d|e|f|0|1|2|3|4|5|6|7|8|9",
-        ")",
-        "(",
-        "A|B|C|D|E|F|a|b|c|d|e|f|0|1|2|3|4|5|6|7|8|9",
-        ")",
-        "(",
-        "A|B|C|D|E|F|a|b|c|d|e|f|0|1|2|3|4|5|6|7|8|9",
-        ")",
-        "(",
-        "A|B|C|D|E|F|a|b|c|d|e|f|0|1|2|3|4|5|6|7|8|9",
-        ")",
-        "(",
-        "A|B|C|D|E|F|a|b|c|d|e|f|0|1|2|3|4|5|6|7|8|9",
-        ")",
-        "|",
-        "(",
-        "A|B|C|D|E|F|a|b|c|d|e|f|0|1|2|3|4|5|6|7|8|9",
-        ")",
-        "(",
-        "A|B|C|D|E|F|a|b|c|d|e|f|0|1|2|3|4|5|6|7|8|9",
-        ")",
-        "(",
-        "A|B|C|D|E|F|a|b|c|d|e|f|0|1|2|3|4|5|6|7|8|9",
-        ")",
-        ")",
-    ]
-
-    terminalize_pass_out = _regex_terminalize_pass(
-        normalize_pass_out, _IS_TEST_VERSION=True
-    )
-    assert terminalize_pass_out == [
+    norm = re_norm(expand)
+    assert norm == [
         '"#"',
         "(",
         "(",
@@ -649,105 +512,84 @@ def test_regex_hex_color(regex_hex_color: str):
 @pytest.fixture
 def regex_username():
     """Regex to match usernames with alphanumeric characters and underscores."""
-    return r"^[^a-zA-Z0-9_]{3,16}$"
+    return r"^[^a-zA-Z0-9_]{2,3}$"
 
 
 def test_regex_username(regex_username: str):
-    split_pass_out = _regex_split_pass(regex_username)
-    assert split_pass_out == [
+    split = re_split(regex_username)
+    assert split == [
         "[",
         "^",
-        "a-z",
-        "A-Z",
-        "0-9",
+        "a",
+        "-",
+        "z",
+        "A",
+        "-",
+        "Z",
+        "0",
+        "-",
+        "9",
         "_",
         "]",
         "{",
-        "3,16",
+        "2,3",
         "}",
     ]
 
-    expand_pass_out = _regex_expand_pass(split_pass_out)
-    assert expand_pass_out == [
+    expand = re_expand(split)
+    assert expand == [
         "[",
-        "^abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_",
+        "!\"#$%&'\\(\\)\\*\\+,\\-\\./:;<=>\\?@\\[\\\\]^`\\{\\|\\}~ \t\n\r\x0b\x0c",
         "]",
         "{",
-        "3,16",
+        "2,3",
         "}",
     ]
 
-    negate_pass_out = _regex_negate_pass(expand_pass_out)
-    assert negate_pass_out == [
+    norm = re_norm(expand)
+    assert norm == [
+        "(",
+        '"!"|"""|"#"|"$"|"%"|"&"|"\'"|"("|")"|"*"|"+"|","|"-"|"."|"/"|":"|";"|"<"|"="|">"|"?"|"@"|"["|"\\"|"]"|"^"|"`"|"{"|"|"|"}"|"~"|" "|"\t"|"\n"|"\r"|"\x0b"|"\x0c"',
+        ")",
+        "(",
+        '"!"|"""|"#"|"$"|"%"|"&"|"\'"|"("|")"|"*"|"+"|","|"-"|"."|"/"|":"|";"|"<"|"="|">"|"?"|"@"|"["|"\\"|"]"|"^"|"`"|"{"|"|"|"}"|"~"|" "|"\t"|"\n"|"\r"|"\x0b"|"\x0c"',
+        ")",
         "[",
-        "!\"#$%&'\\(\\)\\*\\+,\\-\\./:;<=>\\?@\\[\\\\\\]`\\{\\|\\}~ ",
+        "(",
+        '"!"|"""|"#"|"$"|"%"|"&"|"\'"|"("|")"|"*"|"+"|","|"-"|"."|"/"|":"|";"|"<"|"="|">"|"?"|"@"|"["|"\\"|"]"|"^"|"`"|"{"|"|"|"}"|"~"|" "|"\t"|"\n"|"\r"|"\x0b"|"\x0c"',
+        ")",
         "]",
-        "{",
-        "3,16",
-        "}",
     ]
-
-    normalize_pass_out = _regex_normalize_pass(negate_pass_out)
-    assert (
-        normalize_pass_out
-        == [
-            "(",
-            "!|\"|#|$|%|&|'|\\(|\\)|\\*|\\+|,|\\-|\\.|/|:|;|<|=|>|\\?|@|\\[|\\\\|\\]|`|\\{|\\||\\}|~| ",
-            ")",
-        ]
-        * 3
-        + [
-            "(",
-            "!|\"|#|$|%|&|'|\\(|\\)|\\*|\\+|,|\\-|\\.|/|:|;|<|=|>|\\?|@|\\[|\\\\|\\]|`|\\{|\\||\\}|~| ",
-            ")",
-            "?",
-        ]
-        * 16
-    )
-
-    terminalize_pass_out = _regex_terminalize_pass(
-        normalize_pass_out, _IS_TEST_VERSION=True
-    )
-    assert (
-        terminalize_pass_out
-        == [
-            "(",
-            '"!"|"""|"#"|"$"|"%"|"&"|"\'"|"("|")"|"*"|"+"|","|"-"|"."|"/"|":"|";"|"<"|"="|">"|"?"|"@"|"["|"\\"|"]"|"`"|"{"|"|"|"}"|"~"|" "',
-            ")",
-        ]
-        * 3
-        + [
-            "(",
-            '"!"|"""|"#"|"$"|"%"|"&"|"\'"|"("|")"|"*"|"+"|","|"-"|"."|"/"|":"|";"|"<"|"="|">"|"?"|"@"|"["|"\\"|"]"|"`"|"{"|"|"|"}"|"~"|" "',
-            ")",
-            "?",
-        ]
-        * 16
-    )
 
 
 @pytest.fixture
 def regex_ipv4():
     """Regex to match IPv4 addresses."""
-    return r"^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
+    return r"^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
 
 
 def test_regex_ipv4(regex_ipv4: str):
-    split_pass_out = _regex_split_pass(regex_ipv4)
-    assert _regex_split_pass(regex_ipv4) == [
+    split = re_split(regex_ipv4)
+    assert split == [
         "(",
         "(",
         "25",
         "[",
-        "0-5",
+        "0",
+        "-",
+        "5",
         "]",
         "|",
         "2",
         "[",
-        "0-4",
+        "0",
+        "-",
+        "4",
         "]",
         "[",
-        "0-9",
+        "0",
+        "-",
+        "9",
         "]",
         "|",
         "[",
@@ -755,10 +597,14 @@ def test_regex_ipv4(regex_ipv4: str):
         "]",
         "?",
         "[",
-        "0-9",
+        "0",
+        "-",
+        "9",
         "]",
         "[",
-        "0-9",
+        "0",
+        "-",
+        "9",
         "]",
         "?",
         ")",
@@ -770,15 +616,21 @@ def test_regex_ipv4(regex_ipv4: str):
         "(",
         "25",
         "[",
-        "0-5",
+        "0",
+        "-",
+        "5",
         "]",
         "|",
         "2",
         "[",
-        "0-4",
+        "0",
+        "-",
+        "4",
         "]",
         "[",
-        "0-9",
+        "0",
+        "-",
+        "9",
         "]",
         "|",
         "[",
@@ -786,17 +638,21 @@ def test_regex_ipv4(regex_ipv4: str):
         "]",
         "?",
         "[",
-        "0-9",
+        "0",
+        "-",
+        "9",
         "]",
         "[",
-        "0-9",
+        "0",
+        "-",
+        "9",
         "]",
         "?",
         ")",
     ]
 
-    expand_pass_out = _regex_expand_pass(split_pass_out)
-    assert expand_pass_out == [
+    expand = re_expand(split)
+    assert expand == [
         "(",
         "(",
         "25",
@@ -857,130 +713,8 @@ def test_regex_ipv4(regex_ipv4: str):
         ")",
     ]
 
-    negate_pass_out = _regex_negate_pass(expand_pass_out)
-    assert negate_pass_out == expand_pass_out
-
-    normalize_pass_out = _regex_normalize_pass(negate_pass_out)
-    assert normalize_pass_out == [
-        "(",
-        "(",
-        "25",
-        "(",
-        "0|1|2|3|4|5",
-        ")",
-        "|",
-        "2",
-        "(",
-        "0|1|2|3|4",
-        ")",
-        "(",
-        "0|1|2|3|4|5|6|7|8|9",
-        ")",
-        "|",
-        "(",
-        "0|1",
-        ")",
-        "?",
-        "(",
-        "0|1|2|3|4|5|6|7|8|9",
-        ")",
-        "(",
-        "0|1|2|3|4|5|6|7|8|9",
-        ")",
-        "?",
-        ")",
-        "\\.",
-        ")",
-        "(",
-        "(",
-        "25",
-        "(",
-        "0|1|2|3|4|5",
-        ")",
-        "|",
-        "2",
-        "(",
-        "0|1|2|3|4",
-        ")",
-        "(",
-        "0|1|2|3|4|5|6|7|8|9",
-        ")",
-        "|",
-        "(",
-        "0|1",
-        ")",
-        "?",
-        "(",
-        "0|1|2|3|4|5|6|7|8|9",
-        ")",
-        "(",
-        "0|1|2|3|4|5|6|7|8|9",
-        ")",
-        "?",
-        ")",
-        "\\.",
-        ")",
-        "(",
-        "(",
-        "25",
-        "(",
-        "0|1|2|3|4|5",
-        ")",
-        "|",
-        "2",
-        "(",
-        "0|1|2|3|4",
-        ")",
-        "(",
-        "0|1|2|3|4|5|6|7|8|9",
-        ")",
-        "|",
-        "(",
-        "0|1",
-        ")",
-        "?",
-        "(",
-        "0|1|2|3|4|5|6|7|8|9",
-        ")",
-        "(",
-        "0|1|2|3|4|5|6|7|8|9",
-        ")",
-        "?",
-        ")",
-        "\\.",
-        ")",
-        "(",
-        "25",
-        "(",
-        "0|1|2|3|4|5",
-        ")",
-        "|",
-        "2",
-        "(",
-        "0|1|2|3|4",
-        ")",
-        "(",
-        "0|1|2|3|4|5|6|7|8|9",
-        ")",
-        "|",
-        "(",
-        "0|1",
-        ")",
-        "?",
-        "(",
-        "0|1|2|3|4|5|6|7|8|9",
-        ")",
-        "(",
-        "0|1|2|3|4|5|6|7|8|9",
-        ")",
-        "?",
-        ")",
-    ]
-
-    terminalize_pass_out = _regex_terminalize_pass(
-        normalize_pass_out, _IS_TEST_VERSION=True
-    )
-    assert terminalize_pass_out == [
+    norm = re_norm(expand)
+    assert norm == [
         "(",
         "(",
         '"25"',
@@ -996,17 +730,19 @@ def test_regex_ipv4(regex_ipv4: str):
         '"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"',
         ")",
         "|",
+        "[",
         "(",
         '"0"|"1"',
         ")",
-        "?",
+        "]",
         "(",
         '"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"',
         ")",
+        "[",
         "(",
         '"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"',
         ")",
-        "?",
+        "]",
         ")",
         '"."',
         ")",
@@ -1025,17 +761,19 @@ def test_regex_ipv4(regex_ipv4: str):
         '"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"',
         ")",
         "|",
+        "[",
         "(",
         '"0"|"1"',
         ")",
-        "?",
+        "]",
         "(",
         '"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"',
         ")",
+        "[",
         "(",
         '"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"',
         ")",
-        "?",
+        "]",
         ")",
         '"."',
         ")",
@@ -1054,17 +792,19 @@ def test_regex_ipv4(regex_ipv4: str):
         '"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"',
         ")",
         "|",
+        "[",
         "(",
         '"0"|"1"',
         ")",
-        "?",
+        "]",
         "(",
         '"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"',
         ")",
+        "[",
         "(",
         '"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"',
         ")",
-        "?",
+        "]",
         ")",
         '"."',
         ")",
@@ -1082,108 +822,193 @@ def test_regex_ipv4(regex_ipv4: str):
         '"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"',
         ")",
         "|",
+        "[",
         "(",
         '"0"|"1"',
         ")",
-        "?",
+        "]",
         "(",
         '"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"',
         ")",
+        "[",
         "(",
         '"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"',
         ")",
-        "?",
+        "]",
         ")",
     ]
 
 
 @pytest.fixture
-def regex_html_tag():
+def regex_custom_named_backreference():
+    """Regex to match simple HTML tags."""
+    return r"^<([a-z]+)(?<id>[^<]+)*(>(.*)<\/$<id>)>|\s+\/>)$"
+
+
+def test_regex_custom_named_backreference(regex_custom_named_backreference: str):
+    split = re_split(regex_custom_named_backreference)
+    assert split == [
+        "<",
+        "(",
+        "[",
+        "a",
+        "-",
+        "z",
+        "]",
+        "+",
+        ")",
+        "(",
+        "?<id>",
+        "[",
+        "^",
+        "<",
+        "]",
+        "+",
+        ")",
+        "*",
+        "(",
+        ">",
+        "(",
+        ".",
+        "*",
+        ")",
+        "</",
+        "$<id>",
+        ")",
+        ">",
+        "|",
+        "\\s",
+        "+",
+        "/>",
+        ")",
+    ]
+
+    expand = re_expand(split)
+    assert expand == [
+        "<",
+        "(",
+        "[",
+        "abcdefghijklmnopqrstuvwxyz",
+        "]",
+        "+",
+        ")",
+        "(",
+        "?<id>",
+        "[",
+        "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!\"#$%&'\\(\\)\\*\\+,\\-\\./:;=>\\?@\\[\\\\]^_`\\{\\|\\}~ \t\n\r\x0b\x0c",
+        "]",
+        "+",
+        ")",
+        "*",
+        "(",
+        ">",
+        "(",
+        "[",
+        "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!\"#$%&'\\(\\)\\*\\+,\\-\\./:;<=>\\?@\\[\\\\]^_`\\{\\|\\}~ \t\r\x0b\x0c",
+        "]",
+        "*",
+        ")",
+        "</",
+        "$<id>",
+        ")",
+        ">",
+        "|",
+        "[",
+        " \t\n\r\x0c\x0b",
+        "]",
+        "+",
+        "/>",
+        ")",
+    ]
+
+    norm = re_norm(expand)
+    assert norm == [
+        '"<"',
+        "(",
+        "{",
+        "(",
+        '"a"|"b"|"c"|"d"|"e"|"f"|"g"|"h"|"i"|"j"|"k"|"l"|"m"|"n"|"o"|"p"|"q"|"r"|"s"|"t"|"u"|"v"|"w"|"x"|"y"|"z"',
+        ")",
+        "}",
+        ")",
+        "{",
+        "[",
+        "(",
+        "?<id>",
+        "{",
+        "(",
+        '"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"|"a"|"b"|"c"|"d"|"e"|"f"|"g"|"h"|"i"|"j"|"k"|"l"|"m"|"n"|"o"|"p"|"q"|"r"|"s"|"t"|"u"|"v"|"w"|"x"|"y"|"z"|"A"|"B"|"C"|"D"|"E"|"F"|"G"|"H"|"I"|"J"|"K"|"L"|"M"|"N"|"O"|"P"|"Q"|"R"|"S"|"T"|"U"|"V"|"W"|"X"|"Y"|"Z"|"!"|"""|"#"|"$"|"%"|"&"|"\'"|"("|")"|"*"|"+"|","|"-"|"."|"/"|":"|";"|"="|">"|"?"|"@"|"["|"\\"|"]"|"^"|"_"|"`"|"{"|"|"|"}"|"~"|" "|"\t"|"\n"|"\r"|"\x0b"|"\x0c"',
+        ")",
+        "}",
+        ")",
+        "]",
+        "}",
+        "(",
+        '">"',
+        "(",
+        "{",
+        "[",
+        "(",
+        '"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"|"a"|"b"|"c"|"d"|"e"|"f"|"g"|"h"|"i"|"j"|"k"|"l"|"m"|"n"|"o"|"p"|"q"|"r"|"s"|"t"|"u"|"v"|"w"|"x"|"y"|"z"|"A"|"B"|"C"|"D"|"E"|"F"|"G"|"H"|"I"|"J"|"K"|"L"|"M"|"N"|"O"|"P"|"Q"|"R"|"S"|"T"|"U"|"V"|"W"|"X"|"Y"|"Z"|"!"|"""|"#"|"$"|"%"|"&"|"\'"|"("|")"|"*"|"+"|","|"-"|"."|"/"|":"|";"|"<"|"="|">"|"?"|"@"|"["|"\\"|"]"|"^"|"_"|"`"|"{"|"|"|"}"|"~"|" "|"\t"|"\r"|"\x0b"|"\x0c"',
+        ")",
+        "]",
+        "}",
+        ")",
+        '"</"',
+        "$<id>",
+        ")",
+        '">"',
+        "|",
+        "{",
+        "(",
+        '" "|"\t"|"\n"|"\r"|"\x0c"|"\x0b"',
+        ")",
+        "}",
+        '"/>"',
+        ")",
+    ]
+
+
+@pytest.fixture
+def regex_unsupported_capturing_group():
     """Regex to match simple HTML tags."""
     return r"^<([a-z]+)([^<]+)*(?:>(.*)<\/\1)>|\s+\/>)$"
 
 
-def test_regex_html_tag_unsupported(regex_html_tag: str):
+def test_regex_unsupported_capturing_group(regex_unsupported_capturing_group: str):
     with pytest.raises(InvalidRegex) as exc_info:
-        _regex_split_pass(regex_html_tag)
+        re_split(regex_unsupported_capturing_group)
 
-    assert str(exc_info.value) == "Backreferences are not supported yet."
+    assert str(exc_info.value) == "Question-mark construct not supported at 19 >> (?:."
 
 
 @pytest.fixture
-def regex_mixed_unicode_and_special_characters():
+def regex_unsupported_standard_backreference():
+    """Regex to match simple HTML tags."""
+    return r"^<([a-z]+)([^<]+)*(>(.*)<\/\1)>|\s+\/>)$"
+
+
+def test_regex_unsupported_standard_backreference(
+    regex_unsupported_standard_backreference: str,
+):
+    with pytest.raises(InvalidRegex) as exc_info:
+        re_split(regex_unsupported_standard_backreference)
+
+    assert (
+        str(exc_info.value)
+        == "Not supported, use `(?<alphanumeric>...)` to capture, and `$<alphanumeric>` to load instead."
+    )
+
+
+@pytest.fixture
+def regex_unsupported_unicode():
     return r"[\u00A0-\uFFFF\w\d\s]{2,}|[^\x00-\x7F]+"
 
 
-def test_regex_mixed_unicode_and_special_characters_unsupported(
-    regex_mixed_unicode_and_special_characters: str,
+def test_regex_unsupported_unicode(
+    regex_unsupported_unicode: str,
 ):
     with pytest.raises(InvalidRegex) as exc_info:
-        _regex_split_pass(regex_mixed_unicode_and_special_characters)
+        re_split(regex_unsupported_unicode)
 
-    assert str(exc_info.value) == "Unicode characters are not supported yet."
-
-
-@pytest.fixture
-def regex_extreme_quantifiers_and_escaped_metacharacters():
-    return r"(\.\*\?\+\\|[\{\}\[\]\(\)]){,10}"
-
-
-def test_regex_extreme_quantifiers_and_escaped_metacharacters(
-    regex_extreme_quantifiers_and_escaped_metacharacters: str,
-):
-    split_pass_out = _regex_split_pass(
-        regex_extreme_quantifiers_and_escaped_metacharacters
-    )
-    assert split_pass_out == [
-        "(",
-        "\\.\\*\\?\\+\\\\",
-        "|",
-        "[",
-        "\\{\\}\\[\\]\\(\\)",
-        "]",
-        ")",
-        "{",
-        ",10",
-        "}",
-    ]
-
-    expand_pass_out = _regex_expand_pass(split_pass_out)
-    assert expand_pass_out == split_pass_out
-
-    negate_pass_out = _regex_negate_pass(expand_pass_out)
-    assert negate_pass_out == expand_pass_out
-
-    normalize_pass_out = _regex_normalize_pass(negate_pass_out)
-    assert (
-        normalize_pass_out
-        == [
-            "(",
-            "\\.\\*\\?\\+\\\\",
-            "|",
-            "(",
-            "\\{|\\}|\\[|\\]|\\(|\\)",
-            ")",
-            ")",
-            "?",
-        ]
-        * 10
-    )
-
-    terminalize_pass_out = _regex_terminalize_pass(
-        normalize_pass_out, _IS_TEST_VERSION=True
-    )
-    assert (
-        terminalize_pass_out
-        == [
-            "(",
-            '".*?+\\"',
-            "|",
-            "(",
-            '"{"|"}"|"["|"]"|"("|")"',
-            ")",
-            ")",
-            "?",
-        ]
-        * 10
-    )
+    assert str(exc_info.value) == "Escape character \\u is not supported."

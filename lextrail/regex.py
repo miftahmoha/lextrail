@@ -1,663 +1,595 @@
-import math
+import os
 import string
-import warnings
-from enum import Enum
-from typing import Optional
 
-# Added exceptions:
-# Throw error for backreferences.
-# Throw error for lookarounds.
-# Throw error for unicode.
-# Throw error for unescaped `/`.
-# Throw error for invalid quantifier (includes only `{x?, y?}` with `x` and `y` integers,
-# `{}` not allowed).
-# Throw error for escaping `unescapable` escaped characters
 from lextrail.exceptions import InvalidRegex
-from lextrail.helpers import _is_escaped
-
-# [NOTE] Don't forget special characters, we parse considering to some special character
-# `.` or `[`, `-`..
-# One shouldn't forget that they could lose their meaning if they're escaped
-# `\` + `special character`.
-# Always check if such character is not ESCAPED before proceding.
-
-# [NOTE] Should be all ASCII characters, keep it as such for now.
-# List of all printable ASCII characters except newline
-ALL_CHARACTERS = list(string.printable[:-5])  # Exclude newline, carriage return, etc.
-
-# REGEX characters that have been escaped when out of context.
-ESCAPED_REGEX_WHEN_NO_CTX = "()[]{}|.*?+-"
 
 
-class DelimiterType(Enum):
-    PARENTHESIS = 1
-    BRACKETS = 2
-    BRACES = 3
-
-
-delimiter_mapping = {
-    "(": DelimiterType.PARENTHESIS,
-    "[": DelimiterType.BRACKETS,
-    "{": DelimiterType.BRACES,
-}
-
-
-def _is_valid_quantifier(content: str):
-    # Check for {n} format.
-    if "," not in content:
-        # Must be a positive integer.
-        return content.isdigit()
-
-    # Check for {m,n}, {m,}, or {,n} format.
-    parts = content.split(",")
-    if len(parts) != 2:
-        return False
-
-    m, n = parts
-    # Validate m and n.
-    if not m and not n:
-        return False
-
-    # Validate m.
-    if m and not m.isdigit():
-        return False
-
-    # Validate n.
-    if n and not n.isdigit():
-        return False
-
-    # Convert to integers (empty strings are treated as 0 or infinity).
-    m_val = int(m) if m else 0
-    n_val = int(n) if n else float("inf")
-
-    # Ensure m <= n.
-    return m_val <= n_val
-
-
-# [NOTE] Can use `re` package to validate the regex.
-# No need to check for parenthesis coherence and syntactic correctness.
-# [NOTE] Whenever forward accessing `i + x`, need to make sure that there is data.
-# [NOTE] Special characters inside `[]` are automatically escaped (apart from `[]` itself), nesting with `()` or `[]` is not allowed.
-# [ALERT] Adding another `[]` inside `[]` results in UNDEFINED BEHAVIOR, thus it must be ESCAPED by the USER. Unfortunately, `re` package will not help. A warning should be emitted.
-# [NOTE] Could remove the CF `if current:` through removing empty strings in a following pass.
-# [NOTE] Lookahead and Lookbehind are still not supported.
-# [NOTE] Special characters needs to be separated from terminals at this stage, or it'll lead to ambiguous splitting.
-# Example: abc|\| -> ["abc", "|", "|"]
-def _regex_split_pass(regex_str: str) -> list[str]:
-    result: list[str] = []
-    current: list[str] = []
-    current_delimiter: Optional[DelimiterType] = None
+def re_split(regex: str) -> list[str]:
+    lexemes: list[str] = []
+    is_char_class: bool = False
+    lexeme: list[str] = []
     i = 0
 
-    while i < len(regex_str):
-        current_character: str = regex_str[i]
+    def exp_char_set(low: str, up: str) -> str:
+        return "".join(chr(c) for c in range(ord(low), ord(up) + 1))
 
-        # Escaped regex delimiters `\\(` and `\\)` are ignored.
-        if current_character in "()[]{}" and not _is_escaped(regex_str, i - 1):
-            # `{}` has an weird behavior, it's escaped automatically if it doesn't act as
-            # a quantifier. To avoid such behavior, we'll throw an exception.
-            if current_character == "}" and current_delimiter == DelimiterType.BRACES:
-                if not _is_valid_quantifier("".join(current)):
-                    raise InvalidRegex(f"{regex_str[:i+1]} is not a valid quantifier.")
-            # Ignore capturing groups.
-            if (
-                current_character == "("
-                and current_delimiter != DelimiterType.BRACKETS
-                and i + 3 <= len(regex_str)
-                and regex_str[i + 1 : i + 3] == "?:"
-            ):
-                if current:
-                    result.append("".join(current))
-                    current.clear()
-                result.append(current_character)
-                current_delimiter = delimiter_mapping.get(current_character)
-                i += 3
-                continue
-            # Send exception for lookarounds.
-            if (
-                current_character == "("
-                and current_delimiter != DelimiterType.BRACKETS
-                and (
-                    (
-                        i + 3 <= len(regex_str)
-                        and regex_str[i + 1 : i + 3] in ["?=", "?!"]
-                    )
-                    or (
-                        i + 4 <= len(regex_str)
-                        and regex_str[i + 1 : i + 4] in ["?<=", "?<!"]
-                    )
-                )
-            ):
-                raise InvalidRegex("Lookarounds are not allowed.")
-            # Leaving the scope.
-            if current_character in ")]}":
-                current_delimiter = None
-            # Useful for detecting (range) character sets.
-            current_delimiter = delimiter_mapping.get(
-                current_character, current_delimiter
-            )
-            # Avoids empty strings.
-            if current:
-                result.append("".join(current))
-                current.clear()
-            result.append(current_character)
+    def consume_lexeme():
+        if lexeme:
+            lexemes.append("".join(lexeme))
+            lexeme.clear()
 
-        # Backreferences.
-        elif current_character.isdigit() and _is_escaped(regex_str, i - 1):
-            result.append("".join(current))
-            current.clear()
-            # Collecting the digit sequence.
-            j = 1
-            current.append(regex_str[i - 1] + current_character)
-            while (
-                i + j < len(regex_str)
-                and (next_character := regex_str[i + j]).isdigit()
-            ):
-                current.append(next_character)
-                j += 1
-            # Add to result and reinitialize.
-            result.append("".join(current))
-            current.clear()
-            i += j
-            continue
+    def consume_reference(prefix: str):
+        WORD = (
+            exp_char_set("0", "9")
+            + exp_char_set("a", "z")
+            + exp_char_set("A", "Z")
+            + "_"
+        )
+        k = 0
 
-        # [NOT SUPPORTED] Send exception for unicode characters.
-        elif current_character == "u" and _is_escaped(regex_str, i - 1):
-            raise InvalidRegex("Unicode characters are not supported yet.")
+        lexeme.extend([prefix, peek(1)])
+        k += 2
 
-        # Dealing with (range) character sets.
-        elif current_character == "-" and not _is_escaped(regex_str, i - 1):
-            if current_delimiter == DelimiterType.BRACKETS:
-                # Makes sure there are characters between `-`.
-                if current and regex_str[i + 1] != "]":
-                    # Pop the start `0` in `[0-9]`.
-                    current.pop()
-                    # Avoids adding empty strings.
-                    if current:
-                        result.append("".join(current))
-                        current.clear()
-                    result.append(regex_str[i - 1 : i + 2])
-                    # Skip the end `9` in `[0-9]`.
+        while (char := peek(k)) != ">":
+            if char in WORD:
+                lexeme.append(char)
+            else:
+                raise InvalidRegex("Reference name contains invalid characters.")
+            k += 1
+
+        lexeme.append(char)
+        consume_lexeme()
+
+        return k + 1
+
+    def is_escaped(pos):
+        count = 0
+        pos -= 1
+        while pos >= 0 and regex[pos] == "\\":
+            count += 1
+            pos -= 1
+        return count % 2 == 1
+
+    def peek(offset):
+        return regex[i + offset] if 0 < i + offset < len(regex) else ""
+
+    while i < len(regex):
+        char = regex[i]
+
+        if char == "[":
+            if is_escaped(i):
+                lexeme.append(char)
+            else:
+                if is_char_class:
+                    lexeme.append(f"\\{char}")
+                elif peek(1) == "]":
+                    # Skip empty character classes.
                     i += 2
                     continue
                 else:
-                    current.append("\\" + current_character)
-            # [NOTE] Usually, it's easy to differentiate between a special `-` and a standard one,
-            # since `[x-y]` is splitted as ["[", "x-y", "]"]. However, we'll escape it to have
-            # consistency.
-            else:
-                current.append("\\" + current_character)
+                    consume_lexeme()
+                    lexemes.append(char)
+                    is_char_class = not is_char_class
 
-        # Dealing with quantifiers.
-        elif current_character in "*+?":
-            if current_delimiter == DelimiterType.BRACKETS:
-                current.append("\\" + current_character)  # Needs to be escaped.
+        elif char == "]":
+            if is_escaped(i):
+                lexeme.append(char)
             else:
-                if not _is_escaped(regex_str, i - 1):
-                    # `current` should be empty.
-                    if len(result) > 0 and result[-1] in ")]}":
-                        result.append(current_character)
-                    # [NOTE] If there is nothing before `*+?`, `re` will take care of that.
-                    else:
-                        if current:
-                            result.extend(
-                                (["".join(current[:-1])] if len(current) > 1 else [])
-                                + ["(", current[-1], ")", current_character]
-                            )
-                            current.clear()
-                        # [NOTE] We can separate special characters into two categories,
-                        # (1) are escaped and single which are "()[]{}|.", those are
-                        # "contextually" escaped but also are "single" (they're not grouped with other
-                        # characters). (2) are "contextually" escaped, but can be grouped with other characters
-                        # which are "-/". (1) are found in result while (2) are found in current.
-                        # If the last character is a (1), but
-                        # without `()[]{}` (dealt with above) as well as `|` (leads to an error if precedented with
-                        # `*+?`), only `.` and the character classes `\dDwWsS` remain then.
-                        # `.` will be replaced by [..], wrapping with `(..)` is useless.
-                        # Same with character classes, they are and they SHOULD always be WRAPPED.
-                        else:
-                            assert result[-1] in [
-                                ".",
-                                "\\d",
-                                "\\D",
-                                "\\w",
-                                "\\W",
-                                "\\s",
-                                "\\S",
-                            ], "Only `.` and character classes \\dDwWsS are allowed."
-                            result.append(current_character)
+                if is_char_class:
+                    consume_lexeme()
+                    lexemes.append(char)
+                    is_char_class = not is_char_class
                 else:
-                    current.append(current_character)
+                    raise InvalidRegex(f"Inconsistent closing bracket at index {i}.")
 
-        # Send exception if `/` is not escaped.
-        elif current_character == "/" and not _is_escaped(regex_str, i - 1):
-            if current_delimiter == DelimiterType.BRACKETS:
-                current.append("\\" + current_character)  # Needs to be escaped.
-                i += 1
-                continue
+        elif char == "{":
+            if is_escaped(i):
+                lexeme.append(char)
             else:
-                raise InvalidRegex(f"`/` must be escaped in {regex_str[:i+1]} ")
+                if is_char_class:
+                    lexeme.append(f"\\{char}")
+                elif peek(-1) in "*+?}":
+                    raise InvalidRegex(
+                        f'Invalid quantifier precedence at index {i} >> "{regex[i - 1:i + 1]}".'
+                    )
+                else:
+                    consume_lexeme()
+                    lexemes.append(char)
 
-        # Send exception if `unescapable` characters are escaped.
-        # Escapable characters `.^$*+?|()[]{}\\/dDwWsSntru` or digits.
-        # [TODO] Is the list complete?
-        elif (
-            current_character == "\\"
-            and not _is_escaped(regex_str, i - 1)
-            and regex_str[i + 1] not in ".^$*+?|()[]{}\\/dDwWsSntru"
-        ):
-            # Backreferences are handled elsewhere.
-            if not regex_str[i + 1].isdigit():
+        elif char == "}":
+            if is_escaped(i):
+                lexeme.append(char)
+            else:
+                if is_char_class:
+                    lexeme.append(f"\\{char}")
+                elif peek(1) != "" and peek(1) in "*+?{":
+                    raise InvalidRegex(
+                        f'Invalid quantifier precedence at index {i} >> "{regex[i - 1:i + 2]}".'
+                    )
+                else:
+                    consume_lexeme()
+                    bracket, quantifier = lexemes[-2], lexemes[-1]
+                    parts = quantifier.split(",")
+
+                    if (
+                        bracket == "{"
+                        and quantifier != ""
+                        and all(part == "" or part.isdigit() for part in parts)
+                        and len(parts) < 3
+                    ):
+                        if (
+                            len(parts) == 2
+                            and all(part.isdigit() for part in parts)
+                            and int(parts[1]) < int(parts[0])
+                        ):
+                            raise InvalidRegex(
+                                f"Interval quantifier bounds out of order at index {i} >> {regex[i - 4:i + 1]}."
+                            )
+
+                        lexemes.append(char)
+                    else:
+                        raise InvalidRegex(f"Invalid interval quantifier {quantifier}.")
+
+        elif char == "(":
+            if is_escaped(i):
+                lexeme.append(char)
+            else:
+                if is_char_class:
+                    lexeme.append(f"\\{char}")
+                else:
+                    consume_lexeme()
+                    lexemes.append(char)
+
+        elif char == ")":
+            if is_escaped(i):
+                lexeme.append(char)
+            else:
+                if is_char_class:
+                    lexeme.append(f"\\{char}")
+                else:
+                    consume_lexeme()
+                    lexemes.append(char)
+
+        # === BACKREFERENCES ===
+        elif char.isdigit():
+            if is_escaped(i):
                 raise InvalidRegex(
-                    f"{regex_str[i + 1]} must not be escaped in {regex_str[:i+2]} "
+                    "Not supported, use `(?<alphanumeric>...)` to capture, and `$<alphanumeric>` to load instead."
                 )
-
-        # (1) Dealing with character classes.
-        # (2) Dealing with newlines `\n`, tabs `\t` and carriage return `\r`.
-        # [NOTE] Character classes and `\n`, `\t`,`\r` sustain behavior inside `[]`.
-        # [NOTE] Correct for any valid (`.^$*+?|()[]{}\\/dDwWsSnt`) escaped character.
-        elif current_character in "dDwWsSntr" and _is_escaped(regex_str, i - 1):
-            # [NOTE] Ignoring `\d\D\w\W\s\S` as special characters inside a `[]`.
-            # [NOTE] They shouldn't be ignored.
-            # if current_delimiter == DelimiterType.BRACKETS:
-            #     current.append("\\" + current_character)  # Needs to be escaped.
-            #     i += 1
-            #     continue
-            # Avoids empty characters.
-            if current[:-1]:
-                result.append("".join(current[:-1]))
-            result.append("".join([current[-1], current_character]))
-            current.clear()
-
-        # Dealing with special characters `.|`.
-        elif current_character in ".|" and not _is_escaped(regex_str, i - 1):
-            # [NOTE] Ignoring `.|` as special characters inside a `[]`.
-            if current_delimiter == DelimiterType.BRACKETS:
-                current.append("\\" + current_character)  # Needs to be escaped.
-                i += 1
-                continue
-            # Avoids adding empty strings.
-            if current:
-                result.append("".join(current))
-                current.clear()
-            result.append(current_character)
-
-        # Dealing with anchors, they're irrelevant in our context.
-        # CFGs are expected to have deterministic properties, they'll be ignored.
-        elif current_character in "^" and current_delimiter == DelimiterType.BRACKETS:
-            if regex_str[i - 1] == "[" and not _is_escaped(regex_str, i - 2):
-                assert len(current) == 0, "`current` should be empty."
-                result.append(current_character)
             else:
-                current.append("\\" + current_character)  # Needs to be escaped.
+                lexeme.append(char)
 
-        elif current_character in "^$" and not _is_escaped(regex_str, i - 1):
-            warnings.warn(
-                f"There are anchors in <<{regex_str[i-3:i+3]}>>, they'll be ignored."
-            )
-            i += 1
-            continue
-
-        else:
-            current.append(current_character)
-
-        i += 1
-
-    if current:
-        result.append("".join(current))
-    return result
-
-
-# We'll reduce (range) character sets.
-# Example: [0-9] -> [0123456789].
-def _exp_char_set(low: str, up: str) -> str:
-    return "".join(chr(c) for c in range(ord(low), ord(up) + 1))
-
-
-# Negate an expression.
-# Example: [^abc] -> [everything but abc]
-def _sub_exp_all(exp: str) -> str:
-    return "".join([elem for elem in ALL_CHARACTERS if elem not in exp])
-
-
-# [NOTE] There is NO need to reason about negation of subexpressions such as [^abc] and [a^(subexp)bc],
-# (1) everything inside `[]` is literal and (2) `^` has only a meaning at the beginning of a `[]`.
-# Expand:
-# (1) (range) Character sets.
-# Example: [0-9] -> [0123456789].
-# (2) Predefined character classes.
-# (3) Special character `.`.
-def _regex_expand_pass(regex_chunks: list[str]):
-    expanded: list[str] = []
-    i = 0
-
-    while i < len(regex_chunks):
-        current_chunk: str = regex_chunks[i]
-        # Expand predefined character classes.
-        if (
-            len(current_chunk) == 2
-            and current_chunk[0] == "\\"
-            and current_chunk[1] in "dDwWsS"
-        ):
-            # Matches any digit (equivalent to `[0-9]`).
-            if current_chunk[1] == "d":
-                expanded = expanded + ["[", _exp_char_set("0", "9"), "]"]
-
-            # Matches any non-digit (equivalent to `[^0-9]`).
-            elif current_chunk[1] == "D":
-                expanded = expanded + ["[", _sub_exp_all(_exp_char_set("0", "9")), "]"]
-
-            # Matches any word character (alphanumeric + underscore, equivalent to `[a-zA-Z0-9_]`).
-            elif current_chunk[1] == "w":
-                expanded = expanded + [
-                    "[",
-                    _exp_char_set("a", "z")
-                    + _exp_char_set("A", "Z")
-                    + _exp_char_set("0", "9")
-                    + "_",
-                    "]",
-                ]
-
-            # Matches any non-word character (equivalent to `[^a-zA-Z0-9_]`).
-            elif current_chunk[1] == "w":
-                expanded = expanded + [
-                    "[",
-                    _sub_exp_all(
-                        _exp_char_set("a", "z")
-                        + _exp_char_set("A", "Z")
-                        + _exp_char_set("0", "9")
-                        + "_"
-                    ),
-                    "]",
-                ]
-
-            # Matches any whitespace character (spaces, tabs, newlines).
-            elif current_chunk[1] == "s":
-                expanded = expanded + ["(", " ", "|", "\t", "|", "\n", ")"]
-
-            # Matches any non-whitespace character.
-            elif current_chunk[1] == "S":
-                expanded = expanded + ["[", "".join(ALL_CHARACTERS), "]"]
-
-        # Expand special characters.
-        # Expand special character `.`.
-        # [TODO] Does `ALL_CHARACTERS` map to all possible characters?
-        elif len(current_chunk) == 1 and current_chunk[0] == ".":
-            expanded = expanded + ["[", "".join(ALL_CHARACTERS), "]"]
-
-        # After expanding (range) character sets.
-        # Since they get isolated in the split pass, they should be concatenated
-        # with the other chunks.
-        elif len(current_chunk) == 1 and current_chunk[0] == "]":
-            assembled: list[str] = []
-            j = len(expanded) - 1
-            while expanded[j] != "[":
-                assembled.append(expanded[j])
-                expanded.pop()
-                j -= 1
-            # Avoids empty string.
-            if assembled:
-                expanded.append("".join(assembled[::-1]))
-            expanded.append("]")
-
-        # Expand special character `-`.
-        # [NOTE] Need to distinguish if it's `-` inside `[]` or outside.
-        # -> `-` is escaped with `\` when it's outside `[]` during split pass.
-        elif len(current_chunk) == 3 and current_chunk[1] == "-":
-            expanded = expanded + [_exp_char_set(current_chunk[0], current_chunk[2])]
-
-        else:
-            expanded.append(current_chunk)
-
-        i += 1
-
-    return expanded
-
-
-def _add_context_escapes(regex_chunk: str) -> str:
-    result: list[str] = []
-    i = 0
-
-    while i < len(regex_chunk):
-        current_character = regex_chunk[i]
-
-        # [NOTE] Condition (2) is important, during the last pass, we remove the escapes and if
-        # `\\` which comes from the negation is not escaped, it's going to be removed.
-        # It may seems repetitive, since we could get rid of the escapes in this pass,
-        # however, the last pass should have context from the escapes to function correctly
-        # or it'll lead to undefined behavior.
-        if current_character in ESCAPED_REGEX_WHEN_NO_CTX or current_character == "\\":
-            result.append("\\")
-
-        result.append(current_character)
-        i += 1
-
-    return "".join(result)
-
-
-def _del_context_escapes(regex_chunk: str) -> str:
-    result: list[str] = []
-    i = 0
-
-    while i < len(regex_chunk):
-        current_character = regex_chunk[i]
-
-        if current_character in ESCAPED_REGEX_WHEN_NO_CTX and _is_escaped(
-            regex_chunk, i - 1
-        ):
-            result.pop()
-
-        result.append(current_character)
-        i += 1
-
-    return "".join(result)
-
-
-def _regex_negate_pass(regex_chunks: list[str]) -> list[str]:
-    negated: list[str] = []
-    i = 0
-
-    while i < len(regex_chunks):
-        current_chunk: str = regex_chunks[i]
-        if current_chunk[0] == "^" and regex_chunks[i - 1] == "[":
-            # [NOTE] If context is not disabled during the negation pass, the context
-            # is going to be ruined. Since the next steps need the context,
-            # it'll lead to incorrect behavior.
-            negated.append(
-                _add_context_escapes(_sub_exp_all(_del_context_escapes(current_chunk)))
-            )
-        else:
-            negated.append(current_chunk)
-        i += 1
-
-    return negated
-
-
-# [NOTE] When turning things into terminals, there'll be escapes.
-# (1) We deal with this here, '\\[' will be '"["' and not '"\\["'.
-# (2) We deal with this in the main parsing unit, terminals will automatically deal with
-# escaped characters (better).
-def _regex_normalize_pass(regex_chunks: list[str]):
-    result: list[str] = []
-    i = 0
-
-    while i < len(regex_chunks):
-        current_chunk: str = regex_chunks[i]
-
-        # Converting [abcd] to (a|b|c|d).
-        if current_chunk == "[":
-            # `[` and `]` get replaced by `(` and `)`.
-            result.append("(")
-            # The elements should already be assembled in the expand pass.
-            assert (
-                regex_chunks[i + 1] == "]" or regex_chunks[i + 2] == "]"
-            ), "`[]` was not assembled."
-            if regex_chunks[i + 1] != "]":
-                assembled: list[str] = []
-                j = 0
-                while j < len(regex_chunks[i + 1]):
-                    current_character = regex_chunks[i + 1][j]
-                    if current_character == "\\":
-                        assembled.append(regex_chunks[i + 1][j : j + 2])
-                        j += 2
+        elif char == "?":
+            if is_escaped(i):
+                lexeme.append(char)
+            else:
+                if is_char_class:
+                    lexeme.append(f"\\{char}")
+                elif peek(-1) == "(" and not is_escaped(i - 1):
+                    if peek(1) == "<":
+                        consume_lexeme()
+                        i += consume_reference(prefix=char)
                         continue
                     else:
-                        assembled.append(current_character)
-                        j += 1
-                result.append("|".join(assembled))
-                result.append(")")
-                i += 3
-                continue
-            else:
-                result.append(")")
-                i += 2
+                        raise InvalidRegex(
+                            f"Question-mark construct not supported at {i} >> {regex[i - 1:i + 2]}."
+                        )
+                else:
+                    consume_lexeme()
+                    lexemes.append(char)
 
-        elif current_chunk == "{":
-            # Exception will be raised if a quantifier `{}` is empty or
-            # not in the correct format `{x?, y?}`/`{x}`.
-            interval = regex_chunks[i + 1].split(",")
-            if len(interval) == 2:
-                min, max = interval
-                min = int(min) if min else 0
-                max = int(max) if max else math.inf
+        elif char == "$":
+            if is_escaped(i):
+                lexeme.append(char)
             else:
-                min = int(interval[0])
-                max = 0
-            # [NOTE] Having a `*+?` before `{` will lead to a syntactic error,
-            # detectable with `re`.
-            if result[-1] == ")":
-                stack_idx = 0
-                start_idx = 0
-                for idx in reversed(range(len(result[:-1]))):
-                    if result[idx] == "(":
-                        if stack_idx != 0:
-                            stack_idx -= 1
+                if is_char_class:
+                    lexeme.append(f"\\{char}")
+                else:
+                    nextc = peek(1)
+                    if nextc == "":
+                        pass
+                    elif nextc == "<":
+                        consume_lexeme()
+                        i += consume_reference(prefix=char)
+                        continue
+                    else:
+                        raise InvalidRegex("Anchor `$` is not allowed.")
+
+        # `^` (1) has a "quirk" when is inside `[]` and (2) has to be ignored when it is first.
+        elif char == "^":
+            if is_escaped(i):
+                lexeme.append(char)
+            else:
+                if is_char_class:
+                    if peek(-1) == "[" and not is_escaped(i - 1):
+                        if peek(1) == "]":
+                            lexemes.pop()
+                            # Skip `[^]`.
+                            i += 2
+                            continue
+                        consume_lexeme()
+                        lexemes.append(char)
+                    else:
+                        lexeme.append(f"\\{char}")
+                else:
+                    if peek(-1) == "":
+                        pass
+                    else:
+                        raise InvalidRegex("Anchor `^` is not allowed.")
+
+        # `-` has a "quirk" when (1) is inside `[]` and (2) is between two ASCII characters.
+        # [NOTE] The previous implementation didn't consider the "quirky" `-` as an isolated chunk.
+        elif char == "-":
+            if is_escaped(i):
+                lexeme.append(char)
+            else:
+                if is_char_class:
+                    low, up = peek(-1), peek(1)
+                    if (
+                        ord(low) < 128 and ord(up) < 128
+                    ):  # Check if they're ASCII characters.
+                        if lexeme:
+                            if low == "[" or up == "]":
+                                lexeme.append(f"\\{char}")
+                            else:
+                                lexeme.pop()
+                                consume_lexeme()
+                                lexemes += [low, char, up]
+                                # Skip current `-` and upper bound `nextc`.
+                                i += 2
+                                continue
                         else:
-                            start_idx = idx
-                            break
-                    elif result[idx] == ")":
-                        stack_idx += 1
-                length = len(result[start_idx:])
-                for _ in range(min - 1):
-                    result.extend(result[start_idx : start_idx + length])
-                if max != math.inf:
-                    # There is always an instance, if `min` is 0,
-                    # then reuse for max.
-                    if min == 0:
-                        result.append("?")
-                        max -= 1
-                    for _ in range(max):  # type: ignore
-                        result.extend(result[start_idx : start_idx + length])
-                        result.append("?")
+                            lexeme.append(f"\\{char}")
+                    else:
+                        raise InvalidRegex(
+                            f"Invalid ASCII boundaries in {regex[i - 1:i + 2]}"
+                        )
                 else:
-                    # `min` can't be 0, {,} is invalid and it'll throw an exception.
-                    result.extend(result[start_idx : start_idx + length])
-                    result.append("*")
-                i += 3
-                continue
+                    lexeme.append(f"\\{char}")
+
+        elif char == "|":
+            if is_escaped(i):
+                lexeme.append(char)
             else:
-                result[-1] += result[-1][-1] * min
-                if max != math.inf:
-                    result.extend(["(", result[-1][-1], ")", "?"] * (max - 1))  # type: ignore
+                if is_char_class:
+                    lexeme.append(f"\\{char}")
                 else:
-                    result.extend(["(", result[-1][-1], ")", "*"])  # type: ignore
-                i += 3
-                continue
+                    consume_lexeme()
+                    lexemes.append(char)
+
+        elif char == ".":
+            if is_escaped(i):
+                lexeme.append(char)
+            else:
+                if is_char_class:
+                    lexeme.append(f"\\{char}")
+                else:
+                    consume_lexeme()
+                    lexemes.append(char)
+
+        # === QUANTIFIERS ===
+        # [NOTE] `?` is handled separately, since it could also act as a reference in `?<...>`.
+        elif char in "+*":
+            if is_escaped(i):
+                lexeme.append(char)
+            else:
+                if is_char_class:
+                    lexeme.append(f"\\{char}")
+                else:
+                    consume_lexeme()
+                    lexemes.append(char)
+
+        # === PREDEFINED CHARACTER CLASSES ===
+        # Supported.
+        elif char in "dDwWsSnt":
+            if is_escaped(i):
+                lexeme.pop()
+                consume_lexeme()
+                lexemes.append(f"\\{char}")
+            else:
+                lexeme.append(char)
+
+        # Unsupported.
+        # To do: bB; Maybe: ux; Deprecated: cfv0; Weird: r.
+        elif char in "bBcfruvx0":
+            if is_escaped(i):
+                raise InvalidRegex(f"Escape character \\{char} is not supported.")
+            else:
+                lexeme.append(char)
+
+        # === BACKSLASH ===
+        # (1) If the character that comes after has no QUIRKS, then the escape will be ignored.
+        # (2) Since escapes should be escaped if they're expected to be LITERAL with "\\\\" or r'\\',
+        # then the escape will be ignored too.
+        elif char == "\\":
+            if is_escaped(i):
+                lexeme.append(char)
+            else:
+                if peek(1) not in "dDwWsSnt" + "bBcfruvx0" + "|+*?-^$.()[]{}":
+                    pass
+                else:
+                    lexeme.append(char)
 
         else:
-            result.append(current_chunk)
-        i += 1
-    return result
-
-
-def _is_chunk_pipe(regex_chunk: str) -> bool:
-    i = 0
-
-    while i < len(regex_chunk):
-        if regex_chunk[i] == "|" and not _is_escaped(regex_chunk, i - 1):
-            return True
+            lexeme.append(char)
 
         i += 1
 
-    return False
+    consume_lexeme()
+
+    return lexemes
 
 
-def _split_pipe(pipe_chunk: str) -> list[str]:
-    current: list[str] = []
-    result: list[str] = []
+def re_expand(re_chunks: list[str]):
+    SPECIAL_CHARACTERS = "()[]{}|.*?+-"
+
+    def peek(offset):
+        return re_chunks[i + offset] if 0 < i + offset < len(re_chunks) else ""
+
+    def exp_char_set(low: str, up: str) -> str:
+        return "".join(chr(c) for c in range(ord(low), ord(up) + 1))
+
+    def sub_exp_all(exp: str) -> str:
+        return "".join([elem for elem in string.printable if elem not in exp])
+
+    def add_ctx_esc(exp: str) -> str:
+        result: list[str] = []
+
+        for char in exp:
+            if char in SPECIAL_CHARACTERS:
+                result.append("\\")
+
+            result.append(char)
+
+        return "".join(result)
+
+    def chain(x, *funcs):
+        result = x
+        for func in funcs:
+            result = func(result)
+        return result
+
+    def del_ctx_esc(exp: str) -> str:
+        result: list[str] = []
+
+        for char in exp:
+            if char in SPECIAL_CHARACTERS:
+                result.pop()
+
+            result.append(char)
+
+        return "".join(result)
+
+    DIGITS = exp_char_set("0", "9")
+    NOT_DIGITS = add_ctx_esc(sub_exp_all(DIGITS))
+    WORD = DIGITS + exp_char_set("a", "z") + exp_char_set("A", "Z") + "_"
+    NOT_WORD = add_ctx_esc(sub_exp_all(WORD))
+    SPACE = " \t\n\r\f\v"
+    NOT_SPACE = add_ctx_esc(sub_exp_all(" "))
+    WILDCARD = add_ctx_esc(sub_exp_all("\n"))
+
+    lexemes: list[str] = []
     i = 0
+    is_char_class = False
+    is_negated = False
 
-    while i < len(pipe_chunk):
-        current_character = pipe_chunk[i]
+    while i < len(re_chunks):
+        re_chunk = re_chunks[i]
 
-        if current_character == "|" and not _is_escaped(pipe_chunk, i - 1):
-            result.append('"' + "".join(current) + '"')
-            result.append(current_character)
-            current.clear()
+        if re_chunk == "[":
+            is_char_class = not is_char_class
+            lexemes.append(re_chunk)
 
-        elif current_character == "\\" and not _is_escaped(pipe_chunk, i - 1):
-            i += 1
+        elif re_chunk == "]":
+            is_char_class = not is_char_class
+
+            assembled: list[str] = []
+            while lexemes and (lexeme := lexemes.pop()) != "[":
+                assembled.append(lexeme)
+
+            assert assembled, "Empty character class."
+
+            asm_chunk = "".join(assembled[::-1])
+
+            if is_negated:
+                asm_chunk = chain(
+                    asm_chunk,
+                    del_ctx_esc,
+                    sub_exp_all,
+                    add_ctx_esc,
+                )
+                is_negated = not is_negated
+
+            lexemes += ["[", asm_chunk, "]"]
+
+        elif re_chunk == "^":
+            is_negated = not is_negated
+
+        # === CHARACTER RANGE EXPANSION ===
+        elif re_chunk == "-":
+            low, up = lexemes.pop(), peek(1)
+            lexemes.append(exp_char_set(low, up))
+            i += 2
             continue
 
+        # === PREDEFINED CHARACTER CLASSES EXPANSION ===
+        # [NOTE] PCCEs don't become literal inside brackets.
+        elif re_chunk == "\\d":
+            lexemes += [DIGITS] if is_char_class else ["[", DIGITS, "]"]
+
+        elif re_chunk == "\\D":
+            lexemes += [NOT_DIGITS] if is_char_class else ["[", NOT_DIGITS, "]"]
+
+        elif re_chunk == "\\w":
+            lexemes += [WORD] if is_char_class else ["[", WORD, "]"]
+
+        elif re_chunk == "\\W":
+            lexemes += [NOT_WORD] if is_char_class else ["[", NOT_WORD, "]"]
+
+        elif re_chunk == "\\s":
+            lexemes += [SPACE] if is_char_class else ["[", SPACE, "]"]
+
+        elif re_chunk == "\\S":
+            lexemes += [NOT_SPACE] if is_char_class else ["[", NOT_SPACE, "]"]
+
+        # === WILDCARD EXPANSION ===
+        elif re_chunk == ".":
+            lexemes += ["[", WILDCARD, "]"]
+
         else:
-            current.append(current_character)
+            lexemes.append(re_chunk)
 
         i += 1
 
-    result.append('"' + "".join(current) + '"')
-
-    return result
+    return lexemes
 
 
-def _discard_escapes(regex_chunk: str) -> str:
-    result: list[str] = []
-    i = 0
+def re_norm(re_chunks: list[str]):
+    SPECIAL_CHARACTERS = "()[]{}|.*?+-"
+    QUANTIFIERS = {
+        "?": (["["], ["]"]),
+        "+": (["{"], ["}"]),
+        "*": (["{", "["], ["]", "}"]),
+    }
 
-    while i < len(regex_chunk):
-        current_character = regex_chunk[i]
+    def peek(offset) -> str:
+        return re_chunks[i + offset] if 0 < i + offset < len(re_chunks) else ""
 
-        if current_character == "\\" and not _is_escaped(regex_chunk, i - 1):
-            i += 1
-            continue
+    def del_ctx_esc(exp: str) -> str:
+        result: list[str] = []
 
-        else:
-            result.append(current_character)
+        for nextc in list(exp):
+            prevc = result[-1] if result else ""
 
-        i += 1
+            if nextc in SPECIAL_CHARACTERS:
+                # [CHECK] All special characters which were not isolated should be "contextually" escaped.
+                assert prevc == "\\", "Special symbol was not escaped."
+                result.pop()
 
-    return "".join(result)
+            result.append(nextc)
 
+        return "".join(result)
 
-def _regex_terminalize_pass(regex_chunks: list[str], _IS_TEST_VERSION: bool = False):
-    result: list[str] = []
-    i = 0
-
-    while i < len(regex_chunks):
-        current_chunk = regex_chunks[i]
-
-        if current_chunk in "()|*?+":
-            result.append(current_chunk)
-
-        elif _is_chunk_pipe(current_chunk):
-            if _IS_TEST_VERSION:
-                result.append("".join(_split_pipe(current_chunk)))
-            else:
-                result.extend(_split_pipe(current_chunk))
-
-        # Backreferences.
-        elif current_chunk[0] == "\\" and current_chunk[1:].isdigit():
-            result.append(current_chunk)
-
-        else:
-            result.append('"' + _discard_escapes(current_chunk) + '"')
-
-        i += 1
-    return result
-
-
-def _regex_apply_passes(regex_str: str):
-    return _regex_terminalize_pass(
-        _regex_normalize_pass(
-            _regex_negate_pass(_regex_expand_pass(_regex_split_pass(regex_str)))
+    def is_named_reference(chunk: str) -> bool:
+        return (
+            len(chunk) > 2 and chunk[0] in "$?" and chunk[1] == "<" and chunk[-1] == ">"
         )
-    )
+
+    result: list[str] = []
+    i = 0
+
+    while i < len(re_chunks):
+        re_chunk = re_chunks[i]
+
+        # === CHARACTER CLASSES NORMALIZATION ===
+        if re_chunk == "[":
+            # [CHECK] Since a character class could contain predefined characters, then they'll
+            # be isolated during the split pass, and expanded during the expand pass where they
+            # get assembled into one chunk.
+            assert peek(2) == "]", "`[...]` is not assembled."
+
+            if os.getenv("PARSE_TESTS", 0):
+                result += ["(", "|".join(f'"{c}"' for c in del_ctx_esc(peek(1))), ")"]
+            else:
+                result += [
+                    item for c in del_ctx_esc(peek(1)) for item in (f'"{c}"', "|")
+                ][:-1]
+
+            i += 3
+            continue
+
+        # === QUANTIFIERS NORMALIZATION ===
+        elif re_chunk in "*+?":
+            open_br, close_br = QUANTIFIERS[re_chunk]
+            prevc = result[-1]
+
+            if prevc == ")":
+                assembled, depth = [], -1
+
+                while ((chunk := result.pop()) != "(") or depth != 0:
+                    assembled.append(chunk)
+                    depth += 1 if chunk == ")" else -1 if chunk == "(" else 0
+
+                assembled.append(chunk)
+                result += open_br + assembled[::-1] + close_br
+            else:
+                # [CHECK] If the previous chunk is not a ')', then it should be a terminal
+                # chunk of exactly length one.
+                assert (
+                    len(prevc) == 3 and prevc.startswith('"') and prevc.endswith('"')
+                ), "Quantifier was not preceded by a terminal character."
+
+                result += open_br + [result.pop()] + close_br
+
+        # === INTERVAL QUANTIFIERS NORMALIZATION ===
+        elif re_chunk == "{":
+            prevc, nextc = result[-1], peek(1).split(",")
+            # [CHECK] Interval quantifier could either be `{x, y}`, `{x,}`, `{,y}` or `{x}`.
+            assert len(nextc) <= 2, "Interval quantifier has invalid arguments."
+            args = (nextc[0], nextc[1]) if len(nextc) == 2 else (nextc[0], nextc[0])
+            req, max = (int(args[0]) if args[0] else 0), (
+                int(args[1]) if args[1] else 0
+            )
+            opt = max - req
+
+            if prevc == ")":
+                assembled, depth = [], -1
+
+                while result and (chunk := result.pop()) != "(" or depth != 0:
+                    assembled.append(chunk)
+                    depth += 1 if chunk == ")" else -1 if chunk == "(" else 0
+
+                assembled.append(chunk)
+                assembled.reverse()
+
+                result += (
+                    assembled * req + (["["] + assembled + ["]"]) * opt
+                    if opt >= 0
+                    else assembled * req + ["{", "["] + assembled + ["]", "}"]
+                )
+            else:
+                # [CHECK] If the previous chunk is not a ')', then it should be a terminal
+                # chunk of exactly length one.
+                assert (
+                    len(prevc) == 3 and prevc.startswith('"') and prevc.endswith('"')
+                ), "Interval quantifier was not preceded by a terminal character."
+                last = result.pop()
+                result += (
+                    [last] * req + ["[", last, "]"] * opt
+                    if opt >= 0
+                    else [last] * req + ["{", "[", last, "]", "}"]
+                )
+
+            i += 3
+            continue
+
+        else:
+            # [CHECK] The control flow ordering in the current pass will make it
+            # such that both `[]`, `{}` and `+*?` will be dealt with and converted accordingly.
+            # [CHECK] There should be no `.-^$` which are already taken care of in the previous passes.
+            assert (
+                re_chunk not in "[]{}.-^$+*?"
+            ), "Invalid symbols at normalization pass."
+
+            if re_chunk in ["(", ")", "|"] or is_named_reference(re_chunk):
+                result.append(re_chunk)
+            else:
+                no_esc_chunk = del_ctx_esc(re_chunk)
+                if peek(1) in "{*?+":
+                    result += [f'"{no_esc_chunk[:-1]}"'] + [f'"{no_esc_chunk[-1]}"']
+                else:
+                    result.append(f'"{no_esc_chunk}"')
+
+        i += 1
+
+    return result
+
+
+def re_parse(lexeme: str):
+    def chain(x, *funcs):
+        result = x
+        for func in funcs:
+            result = func(result)
+        return result
+
+    return chain(lexeme, re_split, re_expand, re_norm)
