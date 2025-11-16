@@ -1,24 +1,36 @@
+class BuildError(Exception):
+    pass
+
+
+class SyntaxError(BuildError):
+    pass
+
+
+class RegexError(BuildError):
+    pass
+
+
+class InvalidLexeme(BuildError):
+    pass
+
+
+class InvalidDelimiters(BuildError):
+    pass
+
+
+class MissingQuote(BuildError):
+    pass
+
+
+class MissingSlash(BuildError):
+    pass
+
+
 class SymbolNotFound(Exception):
     pass
 
 
-class InvalidSymbol(Exception):
-    pass
-
-
 class InvalidRegex(Exception):
-    pass
-
-
-class InvalidDelimiters(Exception):
-    pass
-
-
-class MissingQuote(Exception):
-    pass
-
-
-class MissingSlash(Exception):
     pass
 
 
@@ -34,5 +46,5 @@ class InfiniteLoop(Exception):
     pass
 
 
-class CombineError(Exception):
+class AssemblyError(Exception):
     pass

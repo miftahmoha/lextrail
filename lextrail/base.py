@@ -6,34 +6,35 @@ from itertools import chain
 from typing import Any
 
 
-class SymbolType(Enum):
-    NONE = 0
-    TERMINAL = 1
-    NON_TERMINAL = 2
-    REGEX = 3
-    SPECIAL = 4
+class Symbol_Kind(Enum):
+    NONE = 1
+    TERMINAL = 2
+    VARIABLE = 3
+    REGEX = 4
     REFERENCE = 5
+    END = 6
+    SPECIAL = 7
 
 
 @dataclass(slots=True)
 class Symbol:
     content: str = ""
-    s_type: SymbolType = SymbolType.NONE
-    s_id: uuid.UUID = field(default_factory=lambda: uuid.uuid4())
-    s_metadata: dict[str, Any] = field(default_factory=dict)
+    kind: Symbol_Kind = Symbol_Kind.NONE
+    id: uuid.UUID = field(default_factory=lambda: uuid.uuid4())
+    tags: list[str] = field(default_factory=list)
 
     def __hash__(self):
-        return hash(self.s_id)
+        return hash(self.id)
 
     def __bool__(self):
-        return self.s_type != SymbolType.NONE
+        return self.kind != Symbol_Kind.NONE
 
     def serialize(self):
         return {
             # `label` is the convention used by Viz.
             "label": self.content,
-            "id": str(self.s_id),
-            "type": str(self.s_type),
+            "id": str(self.id),
+            "kind": str(self.kind),
         }
 
 
@@ -42,7 +43,6 @@ class SymbolGraph:
     initials: list[Symbol] = field(default_factory=list)
     tree: dict[Symbol, list[Symbol]] = field(default_factory=lambda: defaultdict(list))
     finals: list[Symbol] = field(default_factory=list)
-    metadata: dict[str, Any] = field(default_factory=dict)
 
     def __eq__(self, other) -> bool:
         if isinstance(other, SymbolGraph):
@@ -58,13 +58,13 @@ class SymbolGraph:
 
     @property
     def symbols(self):
-        return chain(self.initials, *self.tree.values())
+        return set(chain(self.initials, *self.tree.values()))
 
     def serialize(self) -> dict[str, Any]:
         nodes = [symbol.serialize() for symbol in self.symbols]
 
         edges = [
-            {"from": str(symbol.s_id), "to": str(successor.s_id), "color": "gray"}
+            {"from": str(symbol.id), "to": str(successor.id), "color": "gray"}
             for symbol, successors in self.tree.items()
             for successor in successors
         ]
@@ -76,5 +76,4 @@ class SymbolGraph:
             initials=self.initials.copy(),
             tree=self.tree.copy(),
             finals=self.finals.copy(),
-            metadata=self.metadata.copy(),
         )

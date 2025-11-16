@@ -3,12 +3,11 @@ from collections import defaultdict, deque
 from itertools import chain
 from typing import Deque
 
-from lextrail.base import Symbol, SymbolGraph, SymbolType
-from lextrail.exceptions import SymbolNotFound
+from lextrail.base import Symbol, Symbol_Kind, SymbolGraph
 
 
 def is_end_def_symbol(symbol: Symbol) -> bool:
-    return symbol.content == "END_DEF" and symbol.s_type == SymbolType.SPECIAL
+    return symbol.content == "END" and symbol.kind == Symbol_Kind.END
 
 
 def is_escaped(string: str, index: int) -> bool:
@@ -21,49 +20,16 @@ def is_escaped(string: str, index: int) -> bool:
     return j % 2 != 0
 
 
-def contains_end_def_symbol(symbols: list[Symbol]) -> bool:
-    return any(is_end_def_symbol(symbol) for symbol in symbols)
-
-
-def get_end_def_symbols(symbols: list[Symbol]) -> list[Symbol]:
-    symbols = [symbol for symbol in symbols if is_end_def_symbol(symbol)]
-
-    if not symbols:
-        raise SymbolNotFound("No `END_DEF` symbol was found.")
-
-    return symbols
-
-
-def get_terminal_symbols(symbols: list[Symbol], content: str) -> list[Symbol]:
-    symbols = [
-        symbol
-        for symbol in symbols
-        if symbol.s_type == SymbolType.TERMINAL and symbol.content == content
-    ]
-
-    if len(symbols) == 0:
-        raise SymbolNotFound(f"No terminal symbol matching {content} was found.")
-
-    return symbols
-
-
-def get_symbol_predecessors(
-    symbol_tree: dict[Symbol, list[Symbol]], symbol: Symbol
-) -> list[Symbol]:
-    predecessors = [
-        parent for parent, children in symbol_tree.items() if symbol in children
-    ]
-
-    if len(predecessors) == 0:
-        raise SymbolNotFound(f"No symbol predecessor for {symbol.content} was found.")
-
-    return predecessors
-
-
 def remove_single_nodes(
     symbol_tree: dict[Symbol, list[Symbol]],
 ) -> dict[Symbol, list[Symbol]]:
     return defaultdict(list, ((k, v) for k, v in symbol_tree.items() if v))
+
+
+def safe_node_connect(tree: dict[Symbol, list[Symbol]], from_: Symbol, to_: Symbol):
+    tree[from_] += (
+        [to_] if to_ not in tree[from_] and not is_end_def_symbol(from_) else []
+    )
 
 
 def bfs(symbol_graph: SymbolGraph, start: list[Symbol]) -> list[Symbol]:
@@ -131,7 +97,7 @@ def get_ordered_symbols_from_symbol_graph(
     for symbol in visited:
         content = (
             f'"{symbol.content}"'
-            if symbol.s_type == SymbolType.TERMINAL
+            if symbol.kind == Symbol_Kind.TERMINAL
             else symbol.content
         )
         symbols[content + f"|{order[content]}"] = symbol
