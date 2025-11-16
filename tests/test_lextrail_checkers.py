@@ -1,15 +1,10 @@
 import pytest
 
-from lextrail.build.passes import _convert_str_def_to_str_queue
-from lextrail.exceptions import (
-    InvalidDelimiters,
-    InvalidGrammar,
-    InvalidSymbol,
-    MissingQuote,
-)
-from lextrail.guide.passes import _divide_cfg_grammar_into_rules
+from lextrail.build.passes import definition_into_lexeme_queue
+from lextrail.exceptions import InvalidGrammar, SyntaxError
+from lextrail.guide.passes import divide_cfg_into_rules
 
-# ----------------------------- InvalidSymbol -----------------------------
+# ----------------------------- InvalidLexeme -----------------------------
 
 
 @pytest.fixture
@@ -20,12 +15,12 @@ def invalid_symbol_terminal_missing_left_quotation():
 def test_invalid_symbol_terminal_missing_left_quotation(
     invalid_symbol_terminal_missing_left_quotation: str,
 ):
-    with pytest.raises(MissingQuote) as exc_info:
-        _convert_str_def_to_str_queue(invalid_symbol_terminal_missing_left_quotation)
+    with pytest.raises(SyntaxError) as exc_info:
+        definition_into_lexeme_queue(invalid_symbol_terminal_missing_left_quotation)
 
     assert (
         str(exc_info.value)
-        == 'Quote `"` is missing, terminals should be expressed as "<terminal_name>".'
+        == 'Unclosed quote: terminals must be expressed as "<terminal>".'
     )
 
 
@@ -37,12 +32,12 @@ def invalid_symbol_terminal_missing_right_quotation():
 def test_invalid_symbol_terminal_missing_right_quotation(
     invalid_symbol_terminal_missing_right_quotation: str,
 ):
-    with pytest.raises(MissingQuote) as exc_info:
-        _convert_str_def_to_str_queue(invalid_symbol_terminal_missing_right_quotation)
+    with pytest.raises(SyntaxError) as exc_info:
+        definition_into_lexeme_queue(invalid_symbol_terminal_missing_right_quotation)
 
     assert (
         str(exc_info.value)
-        == 'Quote `"` is missing, terminals should be expressed as "<terminal_name>".'
+        == 'Unclosed quote: terminals must be expressed as "<terminal>".'
     )
 
 
@@ -54,12 +49,12 @@ def invalid_symbol_non_terminal_with_special_characters_0x40():
 def test_invalid_symbol_non_terminal_with_special_characters_0x40(
     invalid_symbol_non_terminal_with_special_characters_0x40: str,
 ):
-    with pytest.raises(InvalidSymbol) as exc_info:
-        _convert_str_def_to_str_queue(
+    with pytest.raises(SyntaxError) as exc_info:
+        definition_into_lexeme_queue(
             invalid_symbol_non_terminal_with_special_characters_0x40
         )
 
-    assert str(exc_info.value) == "Invalid symbol name fact@or."
+    assert str(exc_info.value) == "Invalid lexeme `fact@or`."
 
 
 @pytest.fixture
@@ -70,12 +65,12 @@ def invalid_symbol_non_terminal_with_special_characters_0x2F():
 def test_invalid_symbol_non_terminal_with_special_characters_0x2F(
     invalid_symbol_non_terminal_with_special_characters_0x2F: str,
 ):
-    with pytest.raises(InvalidSymbol) as exc_info:
-        _convert_str_def_to_str_queue(
+    with pytest.raises(SyntaxError) as exc_info:
+        definition_into_lexeme_queue(
             invalid_symbol_non_terminal_with_special_characters_0x2F
         )
 
-    assert str(exc_info.value) == "Invalid symbol name expre#ssion."
+    assert str(exc_info.value) == "Invalid lexeme `expre#ssion`."
 
 
 @pytest.fixture
@@ -86,15 +81,15 @@ def invalid_symbol_non_terminal_with_special_characters_0x5E():
 def test_invalid_symbol_non_terminal_with_special_characters_0x5E(
     invalid_symbol_non_terminal_with_special_characters_0x5E: str,
 ):
-    with pytest.raises(InvalidSymbol) as exc_info:
-        _convert_str_def_to_str_queue(
+    with pytest.raises(SyntaxError) as exc_info:
+        definition_into_lexeme_queue(
             invalid_symbol_non_terminal_with_special_characters_0x5E
         )
 
-    assert str(exc_info.value) == "Invalid symbol name expressi^on."
+    assert str(exc_info.value) == "Invalid lexeme `expressi^on`."
 
 
-# ----------------------------- InvalidDelimiters -----------------------------
+# ----------------------------- SyntaxError -----------------------------
 
 
 @pytest.fixture
@@ -105,12 +100,12 @@ def invalid_delimiters_missing_without_special_delimiters():
 def test_invalid_delimiters_missing_without_special_delimiters(
     invalid_delimiters_missing_without_special_delimiters: str,
 ):
-    with pytest.raises(InvalidDelimiters) as exc_info:
-        _convert_str_def_to_str_queue(
+    with pytest.raises(SyntaxError) as exc_info:
+        definition_into_lexeme_queue(
             invalid_delimiters_missing_without_special_delimiters
         )
 
-    assert str(exc_info.value) == 'Non enclosed delimiter `(` in `"(" expression (`.'
+    assert str(exc_info.value) == 'Unclosed delimiter `(` in `"(" expression (`.'
 
 
 @pytest.fixture
@@ -121,8 +116,8 @@ def invalid_delimiters_open_standard_close_none_any():
 def test_invalid_delimiters_open_standard_close_none_any(
     invalid_delimiters_open_standard_close_none_any: str,
 ):
-    with pytest.raises(InvalidDelimiters) as exc_info:
-        _convert_str_def_to_str_queue(invalid_delimiters_open_standard_close_none_any)
+    with pytest.raises(SyntaxError) as exc_info:
+        definition_into_lexeme_queue(invalid_delimiters_open_standard_close_none_any)
 
     assert (
         str(exc_info.value)
@@ -138,8 +133,8 @@ def invalid_delimiters_open_standard_close_none_once():
 def test_invalid_delimiters_open_standard_close_none_once(
     invalid_delimiters_open_standard_close_none_once: str,
 ):
-    with pytest.raises(InvalidDelimiters) as exc_info:
-        _convert_str_def_to_str_queue(invalid_delimiters_open_standard_close_none_once)
+    with pytest.raises(SyntaxError) as exc_info:
+        definition_into_lexeme_queue(invalid_delimiters_open_standard_close_none_once)
 
     assert (
         str(exc_info.value)
@@ -155,8 +150,8 @@ def invalid_delimiters_open_none_any_close_standard():
 def test_invalid_delimiters_open_none_any_close_standard(
     invalid_delimiters_open_none_any_close_standard: str,
 ):
-    with pytest.raises(InvalidDelimiters) as exc_info:
-        _convert_str_def_to_str_queue(invalid_delimiters_open_none_any_close_standard)
+    with pytest.raises(SyntaxError) as exc_info:
+        definition_into_lexeme_queue(invalid_delimiters_open_none_any_close_standard)
 
     assert (
         str(exc_info.value)
@@ -172,8 +167,8 @@ def invalid_delimiters_open_none_once_close_standard():
 def test_invalid_delimiters_open_none_once_close_standard(
     invalid_delimiters_open_none_once_close_standard: str,
 ):
-    with pytest.raises(InvalidDelimiters) as exc_info:
-        _convert_str_def_to_str_queue(invalid_delimiters_open_none_once_close_standard)
+    with pytest.raises(SyntaxError) as exc_info:
+        definition_into_lexeme_queue(invalid_delimiters_open_none_once_close_standard)
 
     assert (
         str(exc_info.value)
@@ -189,8 +184,8 @@ def invalid_delimiters_open_none_any_close_none_once():
 def test_invalid_delimiters_open_none_any_close_none_once(
     invalid_delimiters_open_none_any_close_none_once: str,
 ):
-    with pytest.raises(InvalidDelimiters) as exc_info:
-        _convert_str_def_to_str_queue(invalid_delimiters_open_none_any_close_none_once)
+    with pytest.raises(SyntaxError) as exc_info:
+        definition_into_lexeme_queue(invalid_delimiters_open_none_any_close_none_once)
 
     assert (
         str(exc_info.value)
@@ -206,8 +201,8 @@ def invalid_delimiters_open_none_once_close_none_any():
 def test_invalid_delimiters_open_none_once_close_none_any(
     invalid_delimiters_open_none_once_close_none_any: str,
 ):
-    with pytest.raises(InvalidDelimiters) as exc_info:
-        _convert_str_def_to_str_queue(invalid_delimiters_open_none_once_close_none_any)
+    with pytest.raises(SyntaxError) as exc_info:
+        definition_into_lexeme_queue(invalid_delimiters_open_none_once_close_none_any)
 
     assert (
         str(exc_info.value)
@@ -235,7 +230,7 @@ def test_invalid_grammar_rule_name_0x40(
     invalid_grammar_rule_name_0x40: str,
 ):
     with pytest.raises(InvalidGrammar) as exc_info:
-        _divide_cfg_grammar_into_rules(invalid_grammar_rule_name_0x40)
+        divide_cfg_into_rules(invalid_grammar_rule_name_0x40)
 
     assert str(exc_info.value) == "Invalid rule name: NUM@BER."
 
@@ -261,7 +256,7 @@ def test_invalid_grammar_rule_name_0x2F(
     invalid_grammar_rule_name_0x2F: str,
 ):
     with pytest.raises(InvalidGrammar) as exc_info:
-        _divide_cfg_grammar_into_rules(invalid_grammar_rule_name_0x2F)
+        divide_cfg_into_rules(invalid_grammar_rule_name_0x2F)
 
     assert str(exc_info.value) == "Invalid rule name: fact&or."
 
@@ -285,7 +280,7 @@ def test_invalid_grammar_rule_name_0x5E(
     invalid_grammar_rule_name_0x5E: str,
 ):
     with pytest.raises(InvalidGrammar) as exc_info:
-        _divide_cfg_grammar_into_rules(invalid_grammar_rule_name_0x5E)
+        divide_cfg_into_rules(invalid_grammar_rule_name_0x5E)
 
     assert str(exc_info.value) == "Invalid rule name: ter^m."
 
@@ -309,7 +304,7 @@ def test_invalid_grammar_missing_start(
     invalid_grammar_missing_start: str,
 ):
     with pytest.raises(InvalidGrammar) as exc_info:
-        _divide_cfg_grammar_into_rules(invalid_grammar_missing_start)
+        divide_cfg_into_rules(invalid_grammar_missing_start)
 
     assert str(exc_info.value) == "The symbol `start` is non-existant."
 
@@ -339,7 +334,7 @@ def test_invalid_grammar_redefinition(
     invalid_grammar_redefinition: str,
 ):
     with pytest.raises(InvalidGrammar) as exc_info:
-        _divide_cfg_grammar_into_rules(invalid_grammar_redefinition)
+        divide_cfg_into_rules(invalid_grammar_redefinition)
 
     assert str(exc_info.value) == "Redefinition of grammar rule: factor."
 
@@ -365,7 +360,7 @@ def test_invalid_grammar_join_colons_multiple(
     invalid_grammar_join_colons_multiple: str,
 ):
     with pytest.raises(InvalidGrammar) as exc_info:
-        _divide_cfg_grammar_into_rules(invalid_grammar_join_colons_multiple)
+        divide_cfg_into_rules(invalid_grammar_join_colons_multiple)
 
     assert (
         str(exc_info.value)
@@ -394,7 +389,7 @@ def test_invalid_grammar_sepr_colons_multiple(
     invalid_grammar_sepr_colons_multiple: str,
 ):
     with pytest.raises(InvalidGrammar) as exc_info:
-        _divide_cfg_grammar_into_rules(invalid_grammar_sepr_colons_multiple)
+        divide_cfg_into_rules(invalid_grammar_sepr_colons_multiple)
 
     assert (
         str(exc_info.value)

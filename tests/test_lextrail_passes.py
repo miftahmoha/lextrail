@@ -1,7 +1,7 @@
 import pytest
 
-from lextrail.build.passes import _split_symbols
-from lextrail.guide.passes import _divide_cfg_grammar_into_rules, _split_cfg_grammar
+from lextrail.build.passes import split_definition_into_lexemes
+from lextrail.guide.passes import divide_cfg_into_rules, split_cfg_into_lines
 
 
 @pytest.fixture
@@ -9,12 +9,12 @@ def def_with_out_or_no_special_delimiters():
     return """ "(" expression ( (factor "-") |  /[0-9]*.[0-9]*/) ")" """
 
 
-def test_split_symbols_def_with_out_or_no_special_delimiters(
+def test_split_definition_into_lexemes_def_with_out_or_no_special_delimiters(
     def_with_out_or_no_special_delimiters: str,
 ):
-    result = _split_symbols(def_with_out_or_no_special_delimiters)
+    result = split_definition_into_lexemes(def_with_out_or_no_special_delimiters)
 
-    assert result == _split_symbols(
+    assert result == split_definition_into_lexemes(
         def_with_out_or_no_special_delimiters.replace(" ", "")
     )
     assert result == [
@@ -34,31 +34,37 @@ def test_split_symbols_def_with_out_or_no_special_delimiters(
 
 @pytest.fixture
 def def_with_in_and_out_or_with_special_delimiters_once_any():
-    return """ "(" expression ((factor "-")+ | </[0-9]*.[0-9]*/ | "+">) ")" """
+    return """ "(" expression ((factor "-")+ | (/[0-9]*.[0-9]*/ | "+")+) ")" """
 
 
-def test_split_symbols_def_with_in_and_out_or_with_special_delimiters_once_any(
+def test_split_definition_into_lexemes_def_with_in_and_out_or_with_special_delimiters_once_any(
     def_with_in_and_out_or_with_special_delimiters_once_any: str,
 ):
-    result = _split_symbols(def_with_in_and_out_or_with_special_delimiters_once_any)
+    result = split_definition_into_lexemes(
+        def_with_in_and_out_or_with_special_delimiters_once_any
+    )
 
-    assert result == _split_symbols(
+    assert result == split_definition_into_lexemes(
         def_with_in_and_out_or_with_special_delimiters_once_any.replace(" ", "")
     )
     assert result == [
         '"("',
         "expression",
         "(",
-        "<",
+        "{",
+        "(",
         "factor",
         '"-"',
-        ">",
+        ")",
+        "}",
         "|",
-        "<",
+        "{",
+        "(",
         "/[0-9]*.[0-9]*/",
         "|",
         '"+"',
-        ">",
+        ")",
+        "}",
         ")",
         '")"',
     ]
@@ -66,23 +72,22 @@ def test_split_symbols_def_with_in_and_out_or_with_special_delimiters_once_any(
 
 @pytest.fixture
 def def_with_in_and_out_ext_or_seq_with_special_delimiters_none_any():
-    return """ "(" expression {(factor "-") ("+" power) | {/[0-9]*.[0-9]*/ factor | "+" expression}} ")" """
+    return """ "(" expression ((factor "-") ("+" power) | (/[0-9]*.[0-9]*/ factor | "+" expression)*)* ")" """
 
 
-def test_split_symbols_def_with_in_and_out_ext_or_seq_with_special_delimiters_none_any(
+def test_split_definition_into_lexemes_def_with_in_and_out_ext_or_seq_with_special_delimiters_none_any(
     def_with_in_and_out_ext_or_seq_with_special_delimiters_none_any: str,
 ):
-    result = _split_symbols(
+    result = split_definition_into_lexemes(
         def_with_in_and_out_ext_or_seq_with_special_delimiters_none_any
     )
 
-    assert result == _split_symbols(
-        def_with_in_and_out_ext_or_seq_with_special_delimiters_none_any.replace(" ", "")
-    )
     assert result == [
         '"("',
         "expression",
         "{",
+        "[",
+        "(",
         "(",
         "factor",
         '"-"',
@@ -93,12 +98,18 @@ def test_split_symbols_def_with_in_and_out_ext_or_seq_with_special_delimiters_no
         ")",
         "|",
         "{",
+        "[",
+        "(",
         "/[0-9]*.[0-9]*/",
         "factor",
         "|",
         '"+"',
         "expression",
+        ")",
+        "]",
         "}",
+        ")",
+        "]",
         "}",
         '")"',
     ]
@@ -106,25 +117,21 @@ def test_split_symbols_def_with_in_and_out_ext_or_seq_with_special_delimiters_no
 
 @pytest.fixture
 def def_with_in_and_out_ext_or_seq_with_special_delimiters_none_once():
-    return """ "(" expression [(factor "-") ("+" power) | [/[0-9]*.[0-9]*/ factor | "+" expression]] ")" """
+    return """ "(" expression ((factor "-") ("+" power) | (/[0-9]*.[0-9]*/ factor | "+" expression)?)? ")" """
 
 
-def test_split_symbols_def_with_in_and_out_ext_or_seq_with_special_delimiters_none_once(
+def test_split_definition_into_lexemes_def_with_in_and_out_ext_or_seq_with_special_delimiters_none_once(
     def_with_in_and_out_ext_or_seq_with_special_delimiters_none_once: str,
 ):
-    result = _split_symbols(
+    lexemes = split_definition_into_lexemes(
         def_with_in_and_out_ext_or_seq_with_special_delimiters_none_once
     )
 
-    assert result == _split_symbols(
-        def_with_in_and_out_ext_or_seq_with_special_delimiters_none_once.replace(
-            " ", ""
-        )
-    )
-    assert result == [
+    assert lexemes == [
         '"("',
         "expression",
         "[",
+        "(",
         "(",
         "factor",
         '"-"',
@@ -135,12 +142,15 @@ def test_split_symbols_def_with_in_and_out_ext_or_seq_with_special_delimiters_no
         ")",
         "|",
         "[",
+        "(",
         "/[0-9]*.[0-9]*/",
         "factor",
         "|",
         '"+"',
         "expression",
+        ")",
         "]",
+        ")",
         "]",
         '")"',
     ]
@@ -148,36 +158,37 @@ def test_split_symbols_def_with_in_and_out_ext_or_seq_with_special_delimiters_no
 
 @pytest.fixture
 def def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and_end_with_special_delimiters_once_any():
-    return """ "(" expression {<factor "-"> ("/" factor) ["+" power] expression (/[0-9]*.[0-9]*/ "*") | [/[0-9]*.[0-9]*/ factor | "+" expression]} ")" """
+    return """ "(" expression ((factor "-")+ ("/" factor) ("+" power)? expression (/[0-9]*.[0-9]*/ "*") | (/[0-9]*.[0-9]*/ factor | "+" expression)?)* ")" """
 
 
-def test_split_symbols_def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and_end_with_special_delimiters_once_any(
+def test_split_definition_into_lexemes_def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and_end_with_special_delimiters_once_any(
     def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and_end_with_special_delimiters_once_any: str,
 ):
-    result = _split_symbols(
+    lexemes = split_definition_into_lexemes(
         def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and_end_with_special_delimiters_once_any
     )
 
-    assert result == _split_symbols(
-        def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and_end_with_special_delimiters_once_any.replace(
-            " ", ""
-        )
-    )
-    assert result == [
+    assert lexemes == [
         '"("',
         "expression",
         "{",
-        "<",
+        "[",
+        "(",
+        "{",
+        "(",
         "factor",
         '"-"',
-        ">",
+        ")",
+        "}",
         "(",
         '"/"',
         "factor",
         ")",
         "[",
+        "(",
         '"+"',
         "power",
+        ")",
         "]",
         "expression",
         "(",
@@ -186,11 +197,15 @@ def test_split_symbols_def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_a
         ")",
         "|",
         "[",
+        "(",
         "/[0-9]*.[0-9]*/",
         "factor",
         "|",
         '"+"',
         "expression",
+        ")",
+        "]",
+        ")",
         "]",
         "}",
         '")"',
@@ -215,7 +230,7 @@ def cfg_without_escapes_no_raw():
 def test_split_cfg_grammar_without_escapes_no_raw(
     cfg_without_escapes_no_raw: str,
 ):
-    lines = [line.strip() for line in _split_cfg_grammar(cfg_without_escapes_no_raw)]
+    lines = [line.strip() for line in split_cfg_into_lines(cfg_without_escapes_no_raw)]
 
     assert lines == [
         "start: expression",
@@ -229,7 +244,7 @@ def test_split_cfg_grammar_without_escapes_no_raw(
 def test_divide_cfg_grammar_into_rules_without_escapes_no_raw(
     cfg_without_escapes_no_raw: str,
 ):
-    rules: dict[str, str] = _divide_cfg_grammar_into_rules(cfg_without_escapes_no_raw)
+    rules: dict[str, str] = divide_cfg_into_rules(cfg_without_escapes_no_raw)
 
     assert rules == {
         "start": "expression",
@@ -258,7 +273,7 @@ def cfg_with_escapes_no_raw():
 def test_split_cfg_grammar_with_escapes_no_raw(
     cfg_with_escapes_no_raw: str,
 ):
-    lines = [line.strip() for line in _split_cfg_grammar(cfg_with_escapes_no_raw)]
+    lines = [line.strip() for line in split_cfg_into_lines(cfg_with_escapes_no_raw)]
 
     assert lines == [
         "start: expression",
@@ -272,7 +287,7 @@ def test_split_cfg_grammar_with_escapes_no_raw(
 def test_divide_cfg_grammar_into_rules_with_escapes_no_raw(
     cfg_with_escapes_no_raw: str,
 ):
-    rules: dict[str, str] = _divide_cfg_grammar_into_rules(cfg_with_escapes_no_raw)
+    rules: dict[str, str] = divide_cfg_into_rules(cfg_with_escapes_no_raw)
 
     assert rules == {
         "start": "expression",
@@ -302,7 +317,7 @@ def cfg_with_multlines_no_raw():
 def test_split_cfg_grammar_with_multlines_no_raw(
     cfg_with_multlines_no_raw: str,
 ):
-    lines = [line.strip() for line in _split_cfg_grammar(cfg_with_multlines_no_raw)]
+    lines = [line.strip() for line in split_cfg_into_lines(cfg_with_multlines_no_raw)]
 
     assert lines == [
         "start: expression",
@@ -317,7 +332,7 @@ def test_split_cfg_grammar_with_multlines_no_raw(
 def test_divide_cfg_grammar_into_rules_with_multlines_no_raw(
     cfg_with_multlines_no_raw: str,
 ):
-    rules: dict[str, str] = _divide_cfg_grammar_into_rules(cfg_with_multlines_no_raw)
+    rules: dict[str, str] = divide_cfg_into_rules(cfg_with_multlines_no_raw)
 
     assert rules == {
         "start": "expression",

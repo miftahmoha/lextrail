@@ -4,6 +4,11 @@ from lextrail.exceptions import InvalidRegex
 from lextrail.regex import re_expand, re_norm, re_split
 
 
+@pytest.fixture(autouse=True)
+def set_env(monkeypatch):
+    monkeypatch.setenv("PARSE_TESTS", "1")
+
+
 @pytest.fixture
 def regex_email():
     """Regex to match email addresses."""
