@@ -1,12 +1,93 @@
-from collections import deque
+from typing import Any
+from collections import defaultdict
 from dataclasses import dataclass, field
-from enum import IntFlag
+from enum import Enum, IntFlag
+from itertools import chain
 from os import getenv
-from typing import Deque
+from uuid import UUID, uuid4
 
-from lextrail.base import Symbol, Symbol_Kind, SymbolGraph
-from lextrail.build.passes import build_symbol_from_lexeme, definition_into_lexeme_queue
-from lextrail.helpers import is_end_def_symbol, remove_single_nodes, safe_node_connect
+from lextrail.parse import split_definition_into_lexemes
+
+
+class SymbolKind(Enum):
+    TERMINAL = 1
+    REGEX = 2
+    VARIABLE = 3
+    REFERENCE = 4
+    END = 5
+
+
+@dataclass(slots=True)
+class Symbol:
+    content: str
+    kind: SymbolKind
+    id: UUID = field(default_factory=lambda: uuid4())
+    tags: list[str] = field(default_factory=list)
+
+    def __hash__(self):
+        return hash(self.id)
+
+    def serialize(self):
+        return {
+            # `label` is the convention used by Viz.
+            "label": self.content,
+            "id": str(self.id),
+            "kind": str(self.kind),
+        }
+
+
+@dataclass(slots=True)
+class SymbolGraph:
+    initials: list[Symbol] = field(default_factory=list)
+    tree: dict[Symbol, list[Symbol]] = field(default_factory=lambda: defaultdict(list))
+    finals: list[Symbol] = field(default_factory=list)
+
+    def __eq__(self, other) -> bool:
+        if isinstance(other, SymbolGraph):
+            return (
+                (self.initials == other.initials)
+                and (self.tree == other.tree)
+                and (self.finals == other.finals)
+            )
+        return NotImplemented
+
+    def __bool__(self) -> bool:
+        return bool(self.initials) and bool(self.tree) and bool(self.finals)
+
+    @property
+    def symbols(self):
+        return set(chain(self.initials, *self.tree.values()))
+
+    def serialize(self) -> dict[str, Any]:
+        nodes = [symbol.serialize() for symbol in self.symbols]
+
+        edges = [
+            {"from": str(symbol.id), "to": str(successor.id), "color": "gray"}
+            for symbol, successors in self.tree.items()
+            for successor in successors
+        ]
+
+        return {"nodes": nodes, "edges": edges}
+
+    def copy(self):
+        return SymbolGraph(
+            initials=self.initials.copy(),
+            tree=self.tree.copy(),
+            finals=self.finals.copy(),
+        )
+
+
+def build_symbol_from_lexeme(content: str) -> Symbol:
+    if content.startswith('"') and content.endswith('"'):
+        node = Symbol(content[1:-1], SymbolKind.TERMINAL)
+    elif content.startswith("/") and content.endswith("/"):
+        node = Symbol(content[1:-1], SymbolKind.REGEX)
+    elif content.startswith("$<") and content.endswith(">"):
+        node = Symbol(content[2:-1], SymbolKind.REFERENCE)
+    else:
+        node = Symbol(content, SymbolKind.VARIABLE)
+
+    return node
 
 
 def construct_symbol_graph(lexemes: list[str]):
@@ -49,7 +130,9 @@ def connect_symbol_graph(
 
     if int(getenv("SKIP_RULE", 1)):
         end_def_symbols = [
-            symbol for symbol in symbol_graph_lhs.finals if is_end_def_symbol(symbol)
+            symbol
+            for symbol in symbol_graph_lhs.finals
+            if symbol.kind == SymbolKind.END
         ]
 
         assert len(end_def_symbols) <= 1, "Duplicate `END` final symbols."
@@ -68,13 +151,16 @@ def connect_symbol_graph(
             symbol_graph_lhs.finals.extend(predecessors)
 
         end_def_symbols = [
-            symbol for symbol in symbol_graph_lhs.initials if is_end_def_symbol(symbol)
+            symbol
+            for symbol in symbol_graph_lhs.initials
+            if symbol.kind == SymbolKind.END
         ]
 
         assert len(end_def_symbols) <= 1, "Duplicate `END` initial symbols."
 
         for end_def_symbol in end_def_symbols:
             symbol_graph_lhs.initials.remove(end_def_symbol)
+            # [TODO] Fix this.
             symbol_graph_lhs.initials += symbol_graph_rhs.initials
 
     symbol_graph_initials_out, symbol_graph_finals_out = (
@@ -90,7 +176,7 @@ def connect_symbol_graph(
             # Not only it's a logical implication, but it allows to not lose track of the `END_DEF`
             # symbol for the next connections.
             if (
-                is_end_def_symbol(symbol_initial)
+                symbol_initial.kind == SymbolKind.END
                 and symbol_initial not in symbol_graph_rhs.finals
             ):
                 symbol_graph_rhs.finals.append(symbol_initial)
@@ -121,8 +207,16 @@ def union_symbol_graph(
 
     # Remove duplicate `END` symbols in the initials.
     end_def_symbols_lhs, end_def_symbols_rhs = (
-        [symbol for symbol in symbol_graph_lhs.initials if is_end_def_symbol(symbol)],
-        [symbol for symbol in symbol_graph_rhs.initials if is_end_def_symbol(symbol)],
+        [
+            symbol
+            for symbol in symbol_graph_lhs.initials
+            if symbol.kind == SymbolKind.END
+        ],
+        [
+            symbol
+            for symbol in symbol_graph_rhs.initials
+            if symbol.kind == SymbolKind.END
+        ],
     )
 
     assert (
@@ -134,8 +228,8 @@ def union_symbol_graph(
 
     # Remove duplicate `END` symbols in the finals.
     end_def_symbols_lhs, end_def_symbols_rhs = (
-        [symbol for symbol in symbol_graph_lhs.finals if is_end_def_symbol(symbol)],
-        [symbol for symbol in symbol_graph_rhs.finals if is_end_def_symbol(symbol)],
+        [symbol for symbol in symbol_graph_lhs.finals if symbol.kind == SymbolKind.END],
+        [symbol for symbol in symbol_graph_rhs.finals if symbol.kind == SymbolKind.END],
     )
 
     assert (
@@ -162,15 +256,15 @@ def union_symbol_graph(
     )
 
 
-class Delimiter_Property(IntFlag):
+class DelimiterProperty(IntFlag):
     NULL = 0 << 0
     STOP = 1 << 0
     LOOP = 1 << 1
     PIPE = 1 << 2
 
 
-# [TODO] Tests needs to go over combinations of different types <{}>, <[]>, {<>}, {[]}..
-def cast_symbol_graph(symbol_graph: SymbolGraph, kind: Delimiter_Property):
+# [TODO] Tests needs to go over combinations of different types <{}>, <[]>, {<>}, {[]}, etc.
+def cast_symbol_graph(symbol_graph: SymbolGraph, kind: DelimiterProperty):
     initials, tree, finals = (
         symbol_graph.initials,
         symbol_graph.tree,
@@ -178,12 +272,12 @@ def cast_symbol_graph(symbol_graph: SymbolGraph, kind: Delimiter_Property):
     )
 
     end_def_symbol = (
-        next((s for s in initials if is_end_def_symbol(s)), None)
-        or next((s for s in finals if is_end_def_symbol(s)), None)
-        or Symbol("END", Symbol_Kind.END)
+        next((s for s in initials if s.kind == SymbolKind.END), None)
+        or next((s for s in finals if s.kind == SymbolKind.END), None)
+        or Symbol("", SymbolKind.END)
     )
 
-    if kind & Delimiter_Property.LOOP:
+    if kind & DelimiterProperty.LOOP:
         # Need to re-establish the loop for mixed graphs built through unions.
         finals += (
             [parent for parent, children in tree.items() if end_def_symbol in children]
@@ -200,7 +294,7 @@ def cast_symbol_graph(symbol_graph: SymbolGraph, kind: Delimiter_Property):
 
         symbol_graph.finals = [end_def_symbol]
 
-    elif kind & Delimiter_Property.STOP:
+    elif kind & DelimiterProperty.STOP:
         symbol_graph.initials += (
             [end_def_symbol] if end_def_symbol not in initials else []
         )
@@ -210,44 +304,45 @@ def cast_symbol_graph(symbol_graph: SymbolGraph, kind: Delimiter_Property):
 
 
 @dataclass(slots=True)
-class Accumulator:
+class TrailBuilder:
     graph: SymbolGraph = field(default_factory=lambda: SymbolGraph())
-    kind: Delimiter_Property = Delimiter_Property.NULL
+    kind: DelimiterProperty = DelimiterProperty.NULL
     tag: str = ""
 
 
 def build_symbol_graph(symbol_def: str):
     LEXEME_TO_KIND = {
-        "(": Delimiter_Property.NULL,
-        "{": Delimiter_Property.LOOP,
-        "[": Delimiter_Property.STOP,
-        "|": Delimiter_Property.PIPE,
+        "(": DelimiterProperty.NULL,
+        "{": DelimiterProperty.LOOP,
+        "[": DelimiterProperty.STOP,
+        "|": DelimiterProperty.PIPE,
     }
 
-    lexemes = definition_into_lexeme_queue(symbol_def)
-    state: Deque[Accumulator] = deque([Accumulator()])
-    current_accumulated_lexemes: list[str] = []
+    lexemes = split_definition_into_lexemes(symbol_def)
+    state: list[TrailBuilder] = [TrailBuilder()]
+    accumulated: list[str] = []
+    i = 0
 
-    while lexemes:
-        lexeme = lexemes.popleft()
+    while i < len(lexemes):
+        lexeme = lexemes[i]
 
         if lexeme in "([{|":
-            accumulated_graph = construct_symbol_graph(current_accumulated_lexemes)
+            accumulated_graph = construct_symbol_graph(accumulated)
             state[-1].graph = connect_symbol_graph(state[-1].graph, accumulated_graph)
-            current_accumulated_lexemes.clear()
+            accumulated.clear()
 
-            state.append(Accumulator(SymbolGraph(), LEXEME_TO_KIND[lexeme]))
+            state.append(TrailBuilder(SymbolGraph(), LEXEME_TO_KIND[lexeme]))
 
         elif lexeme.startswith("?<") and lexeme.endswith(">"):
             state[-1].tag = lexeme[2:-1]
 
         elif lexeme in ")]}":
-            accumulated_graph = construct_symbol_graph(current_accumulated_lexemes)
+            accumulated_graph = construct_symbol_graph(accumulated)
             state[-1].graph = connect_symbol_graph(state[-1].graph, accumulated_graph)
-            current_accumulated_lexemes.clear()
+            accumulated.clear()
 
             accumulator = state.pop()
-            while accumulator.kind == Delimiter_Property.PIPE:
+            while accumulator.kind == DelimiterProperty.PIPE:
                 state[-1].graph = union_symbol_graph(state[-1].graph, accumulator.graph)
                 accumulator = state.pop()
 
@@ -263,8 +358,25 @@ def build_symbol_graph(symbol_def: str):
             )
 
         else:
-            current_accumulated_lexemes.append(lexeme)
+            accumulated.append(lexeme)
 
-    assert len(state) == 1, "Only one consumer should remain."
+        i += 1
+
+    assert len(state) == 1, "Only one builder should remain."
 
     return state.pop().graph
+
+
+# ============================ HELPERS ============================
+
+
+def remove_single_nodes(
+    symbol_tree: dict[Symbol, list[Symbol]],
+) -> dict[Symbol, list[Symbol]]:
+    return defaultdict(list, ((k, v) for k, v in symbol_tree.items() if v))
+
+
+def safe_node_connect(tree: dict[Symbol, list[Symbol]], from_: Symbol, to_: Symbol):
+    tree[from_] += (
+        [to_] if to_ not in tree[from_] and from_.kind != SymbolKind.END else []
+    )
