@@ -1,171 +1,302 @@
-import uuid
 from collections import defaultdict, deque
 from copy import copy
-from itertools import chain
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Deque
+from uuid import UUID, uuid4
+from typing import Deque, Optional
 
-from lextrail.base import Symbol
-from lextrail.build import build_symbol_from_lexeme
-from lextrail.exceptions import AssemblyError
-from lextrail.helpers import TrailContext
-
-if TYPE_CHECKING:
-    from lextrail.guide import Trail, TrailGraph, TrailProposal
-
-# Avoid circular import errors.
-import lextrail.guide as Py_Module
+from lextrail.build import SymbolKind
+from lextrail.guide import CFGGraph, TrailLayer, TrailFrame, build_cfg_graph
+from lextrail.helpers import TrailError
 
 
-@dataclass(slots=True)
+@dataclass
 class ASMNode:
-    content: str = ""
-    id: uuid.UUID = field(default_factory=lambda: uuid.uuid4())
+    value: int
+    id: UUID = field(default_factory=lambda: uuid4())
 
     def __hash__(self):
         return hash(self.id)
 
 
-@dataclass(slots=True)
-class ASMState:
-    node: ASMNode = ASMNode()
-    acc: str = ""
-    idx: int = 0
-
-
-@dataclass(slots=True)
+@dataclass
 class ASMGraph:
-    initials: list[ASMNode] = field(default_factory=list)
-    tree: dict[ASMNode, list[ASMNode]] = field(
-        default_factory=lambda: defaultdict(list)
-    )
-    finals: list[ASMNode] = field(default_factory=list)
+    head: list[ASMNode]
+    tree: dict[ASMNode, set[ASMNode]]
+    tail: list[ASMNode]
+
+    def new() -> "ASMGraph":
+        return ASMGraph(head=[], tree=defaultdict(list), tail=[])
 
 
-def build_asm_graph(vocabulary: list[str]) -> ASMGraph:
-    initials: list[ASMNode] = []
-    tree: dict[ASMNode, list[ASMNode]] = defaultdict(list)
-    finals: list[ASMNode] = []
+@dataclass
+class ASMStep:
+    accumulator: list[int]
+    node: Optional[ASMNode]
 
-    if not isinstance(vocabulary, list) and not all(
-        isinstance(token, str) for token in vocabulary
-    ):
-        raise AssemblyError("The vocabulary must be list[str].")
+    @classmethod
+    def new(cls) -> "ASMStep":
+        return ASMStep(accumulator=[], node=None)
 
-    for word in vocabulary:
-        current_node = ASMNode()
 
-        for i, char in enumerate(word):
-            candidates = initials if i == 0 else tree[current_node]
+@dataclass
+class ASMToken:
+    value: Deque[int]
 
-            existing_node = next(
-                (node for node in candidates if node.content == char), None
-            )
-            if existing_node:
-                current_node = existing_node
+    @classmethod
+    def new(cls) -> "ASMToken":
+        return ASMToken(deque())
+
+    @classmethod
+    def from_str(cls, s: str) -> "ASMToken":
+        return cls(deque(s.encode("utf-8")))
+
+    def end(self) -> bool:
+        return not self.value
+
+
+@dataclass
+class ASMFrame:
+    layers: list["TrailLayer"]
+    step: ASMStep
+    token: ASMToken
+
+    @classmethod
+    def new(cls, cfg: str) -> "ASMFrame":
+        return ASMFrame(
+            layers=TrailFrame.new(cfg), step=ASMStep.new(), token=ASMToken.new()
+        )
+
+
+@dataclass
+class ASMProposal:
+    frame: ASMFrame
+    value: str
+
+
+type ASMRefs = dict[str, list[int]]
+
+
+@dataclass
+class ASMState:
+    proposals: list[ASMProposal]
+    backrefs: ASMRefs
+
+    @classmethod
+    def new(cls) -> "ASMState":
+        return ASMState(proposals=[], backrefs=defaultdict(list))
+
+
+@dataclass
+class ASMSchema:
+    cfg: CFGGraph
+    asm: ASMGraph
+
+
+@dataclass
+class ASM:
+    schema: ASMSchema
+    state: ASMState
+
+
+def build_asm_graph(alphabet: list[str]):
+    graph: ASMNode = ASMGraph.new()
+    node: Optional[ASMNode] = None
+
+    tokens = [symbol.encode("utf-8") for symbol in alphabet]
+
+    for token in tokens:
+        for i, byte in enumerate(token):
+            candidates = graph.head if i == 0 else graph.tree[node] if node else []
+            found = next((node for node in candidates if node.value == byte), None)
+
+            if found:
+                node = found
             else:
-                new_node = ASMNode(char)
+                new_node = ASMNode(byte)
                 candidates.append(new_node)
-                current_node = new_node
+                node = new_node
 
-        # Guards against empty words.
-        if current_node:
-            finals.append(current_node)
+        if node not in graph.tail:
+            graph.tail.append(node)
 
-    return ASMGraph(initials=initials, tree=tree, finals=finals)
-
-
-def build_asm_proposal(
-    last_symbol: Symbol,
-    last_state: Deque["TrailGraph"],  # [NOTE] They're last in the assembly sequence.
-    asm_content: str,
-) -> "TrailProposal":
-    asm_symbol = build_symbol_from_lexeme(f'"{asm_content}"')
-
-    # `last_state` gets update at `get_next_state`, which mutates `asm_state`.
-    asm_state = deque([copy(state) for state in last_state])
-
-    # `last_symbol` and `asm_symbol` get same state.
-    asm_state[-1].state = asm_symbol
-    asm_state[-1].graph.tree[asm_symbol] = last_state[-1].graph.tree[last_symbol]
-
-    return Py_Module.TrailProposal(symbol=asm_symbol, state=asm_state)
+    return graph
 
 
-def _next_asm_proposal(trail: "Trail", proposal: "TrailProposal", state: ASMState):
-    curr_content, curr_state = proposal.symbol.content, proposal.state
-    curr_idx, curr_acc = state.idx, state.acc
-    curr_symbol = proposal.symbol
-
-    candidates = trail.assembler.tree.get(state.node, [])
-
-    if not candidates:
-        return
-
-    assemble_node = next(
-        (
-            candidate
-            for candidate in candidates
-            if candidate.content == curr_content[curr_idx]
-        ),
-        ASMNode(),
+def asm_cfg(cfg: str, alphabet: list[str]) -> ASM:
+    return ASM(
+        schema=ASMSchema(cfg=build_cfg_graph(cfg), asm=build_asm_graph(alphabet)),
+        state=ASMState.new(),
     )
 
-    if assemble_node in trail.assembler.finals:
-        next_proposal = build_asm_proposal(
-            curr_symbol, curr_state, curr_acc + curr_content[curr_idx]
+
+def assemble(graph: ASMGraph, frame: ASMFrame) -> list[ASMProposal]:
+    proposals: list[ASMProposal] = []
+
+    token, step = frame.token, frame.step
+    bytes, node = token.value, step.node
+
+    successors = graph.tree[node] if node else graph.head
+
+    while bytes:
+        found = next(
+            (successor for successor in successors if successor.value == bytes[0]), None
         )
-        yield next_proposal
 
-    next_idx = curr_idx + 1 if curr_content[curr_idx + 1 :] else 0
-    next_proposals = (
-        [proposal] if next_idx != 0 else Py_Module.get_next_proposals(trail, [proposal])
+        if found:
+            # Update token.
+            byte = bytes.popleft()
+
+            step.node = found
+            step.accumulator.append(byte)
+
+            if found in graph.tail:
+                final_layers = [copy(layer) for layer in frame.layers]
+
+                # Reset the step for the next run.
+                final_step = ASMStep.new()
+                final_token = ASMToken(value=deque(bytes))
+
+                final_frame = ASMFrame(
+                    layers=final_layers, step=final_step, token=final_token
+                )
+                final_value = bytearray(step.accumulator).decode("utf-8")
+
+                proposals.append(
+                    ASMProposal(
+                        frame=final_frame,
+                        value=final_value,
+                    )
+                )
+
+            successors = graph.tree[found]
+        else:
+            break
+
+    return proposals
+
+
+def asm_run(asm_s: ASM):
+    schema, state = asm_s.schema, asm_s.state
+
+    cfg, asm = schema.cfg, schema.asm
+    proposals, backrefs = state.proposals, state.backrefs
+
+    # === Backreferences ===
+    for proposal in proposals:
+        node, value = proposal.frame.layers[-1].node, proposal.value
+
+        for tag in node.tags:
+            backrefs[tag] += value
+
+    frames = (
+        [proposal.frame for proposal in proposals] if proposals else [ASMFrame.new(cfg)]
     )
-    next_state = ASMState(assemble_node, curr_acc + curr_content[curr_idx], next_idx)
 
-    for next_proposal in next_proposals:
-        yield from _next_asm_proposal(trail, next_proposal, next_state)
+    state.proposals.clear()
+
+    while frames:
+        frame = frames.pop()
+        checkpoint = frame.layers[-1]
+        graph, node = checkpoint.graph, checkpoint.node
+
+        if node:
+            successors = graph.tree[node] if frame.token.end() else [node]
+        else:
+            successors = graph.head
+
+        if not successors:
+            frame.layers.pop()
+
+            if frame.layers:
+                frames.append(frame)
+
+            continue
+
+        for successor in successors:
+            if successor.kind == SymbolKind.TERMINAL:
+                next_layers = [copy(layer) for layer in frame.layers]
+                next_layers[-1].node = successor
+
+                step, token = frame.step, frame.token
+                next_step, next_token = (
+                    ASMStep(accumulator=step.accumulator[:], node=step.node),
+                    (
+                        ASMToken.from_str(successor.content)
+                        if token.end()
+                        else ASMToken(value=deque(token.value))
+                    ),
+                )
+
+                next_frame = ASMFrame(
+                    layers=next_layers, step=next_step, token=next_token
+                )
+
+                proposals = assemble(asm, next_frame)
+                state.proposals.extend(proposals)
+
+                if next_token.end():
+                    frames.append(next_frame)
+            elif successor.kind == SymbolKind.VARIABLE:
+                next_layers = [copy(layer) for layer in frame.layers]
+                next_layers[-1].node = successor
+
+                # Reaching a `VARIABLE` means adding a layer to the stack.
+                next_value = successor.content
+                next_layer = TrailLayer(graph=cfg[next_value], node=None)
+                next_layers.append(next_layer)
+
+                next_frame = ASMFrame(
+                    layers=next_layers, step=copy(frame.step), token=copy(frame.token)
+                )
+
+                # Push it to be processed.
+                frames.append(next_frame)
+            elif successor.kind == SymbolKind.REFERENCE:
+                next_layers = [copy(layer) for layer in frame.layers]
+                next_layers[-1].node = successor
+
+                step, token = frame.step, frame.token
+                next_step, next_token = (
+                    ASMStep(accumulator=step.accumulator[:], node=step.node),
+                    (
+                        ASMToken(value=backrefs[successor.content])
+                        if token.end()
+                        else ASMToken(value=token.value[:])
+                    ),
+                )
+
+                next_frame = ASMFrame(
+                    layers=next_layers, step=next_step, token=next_token
+                )
+
+                proposals = assemble(asm, next_frame)
+                state.proposals.extend(proposals)
+
+                if next_token.end():
+                    frames.append(next_frame)
+            elif successor.kind == SymbolKind.END:
+                if frame.step == ASMStep.new():
+                    next_layers = [copy(layer) for layer in frame.layers]
+                    next_layers[-1].node = successor
+
+                    next_frame = ASMFrame(
+                        layers=next_layers, step=ASMStep.new(), token=ASMToken.new()
+                    )
+
+                    state.proposals.append(ASMProposal(frame=next_frame, value=""))
+            else:
+                raise TrailError("Symbol of kind `{successor.kind}` is not supported.")
 
 
-def _get_asm_proposals(
-    trail: "Trail",
-    proposal: "TrailProposal",
-):
-    candidates = trail.assembler.initials
-    curr_symbol, curr_state = proposal.symbol, proposal.state
-    curr_content = curr_symbol.content
+def get_next_tokens(asm: ASM, token: str):
+    state = asm.state
 
-    if not candidates:
-        return
+    current = state.proposals
+    state.proposals = [proposal for proposal in current if proposal.value == token]
 
-    asm_node = next(
-        (candidate for candidate in candidates if candidate.content == curr_content[0]),
-        ASMNode(),
-    )
+    if current and not state.proposals:
+        raise TrailError(f"`{token}` has no previous state.")
 
-    if asm_node in trail.assembler.finals:
-        next_proposal = build_asm_proposal(curr_symbol, curr_state, curr_content[0])
-        yield next_proposal
+    asm_run(asm)
 
-    next_idx = 0 if len(curr_content) == 1 else 1
-    next_proposals = (
-        [proposal] if next_idx == 1 else Py_Module.get_next_proposals(trail, [proposal])
-    )
-    next_state = ASMState(asm_node, curr_content, 0 if len(curr_content) == 1 else 1)
-
-    for next_proposal in next_proposals:
-        yield from _next_asm_proposal(trail, next_proposal, next_state)
-
-
-def get_asm_proposals(
-    trail: "Trail",
-    proposals: list["TrailProposal"],
-):
-    with TrailContext(
-        PARSE_BREFS="0"
-    ):  # No reference captures during `get_next_proposals` calls.
-        return list(
-            chain.from_iterable(
-                _get_asm_proposals(trail, proposal) for proposal in proposals
-            )
-        )
+    return [proposal.value for proposal in state.proposals]
