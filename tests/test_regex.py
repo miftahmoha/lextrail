@@ -1,23 +1,21 @@
 import pytest
 
-from lextrail.exceptions import InvalidRegex
+# from lextrail.exceptions import InvalidRegex
+from lextrail.helpers import TrailError, format_error
 from lextrail.regex import re_expand, re_norm, re_split
 
 
 @pytest.fixture(autouse=True)
 def set_env(monkeypatch):
-    monkeypatch.setenv("PARSE_TESTS", "1")
+    monkeypatch.setenv("TEST_MODE", "1")
 
 
-@pytest.fixture
-def regex_email():
-    """Regex to match email addresses."""
-    return r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
+def test_regex_email():
+    example = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
 
-
-def test_regex_email(regex_email: str):
-    split = re_split(regex_email)
+    split = re_split(example)
     assert split == [
+        "(",
         "[",
         "a",
         "-",
@@ -59,10 +57,12 @@ def test_regex_email(regex_email: str):
         "\\-\\.",
         "]",
         "+",
+        ")",
     ]
 
     expand = re_expand(split)
     assert expand == [
+        "(",
         "[",
         "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_\\.\\+\\-",
         "]",
@@ -77,39 +77,33 @@ def test_regex_email(regex_email: str):
         "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789\\-\\.",
         "]",
         "+",
+        ")",
     ]
 
     norm = re_norm(expand)
     assert norm == [
-        "{",
         "(",
+        "{",
         '"a"|"b"|"c"|"d"|"e"|"f"|"g"|"h"|"i"|"j"|"k"|"l"|"m"|"n"|"o"|"p"|"q"|"r"|"s"|"t"|"u"|"v"|"w"|"x"|"y"|"z"|"A"|"B"|"C"|"D"|"E"|"F"|"G"|"H"|"I"|"J"|"K"|"L"|"M"|"N"|"O"|"P"|"Q"|"R"|"S"|"T"|"U"|"V"|"W"|"X"|"Y"|"Z"|"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"|"_"|"."|"+"|"-"',
-        ")",
         "}",
         '"@"',
         "{",
-        "(",
         '"a"|"b"|"c"|"d"|"e"|"f"|"g"|"h"|"i"|"j"|"k"|"l"|"m"|"n"|"o"|"p"|"q"|"r"|"s"|"t"|"u"|"v"|"w"|"x"|"y"|"z"|"A"|"B"|"C"|"D"|"E"|"F"|"G"|"H"|"I"|"J"|"K"|"L"|"M"|"N"|"O"|"P"|"Q"|"R"|"S"|"T"|"U"|"V"|"W"|"X"|"Y"|"Z"|"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"|"-"',
-        ")",
         "}",
         '"."',
         "{",
-        "(",
         '"a"|"b"|"c"|"d"|"e"|"f"|"g"|"h"|"i"|"j"|"k"|"l"|"m"|"n"|"o"|"p"|"q"|"r"|"s"|"t"|"u"|"v"|"w"|"x"|"y"|"z"|"A"|"B"|"C"|"D"|"E"|"F"|"G"|"H"|"I"|"J"|"K"|"L"|"M"|"N"|"O"|"P"|"Q"|"R"|"S"|"T"|"U"|"V"|"W"|"X"|"Y"|"Z"|"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"|"-"|"."',
-        ")",
         "}",
+        ")",
     ]
 
 
-@pytest.fixture
-def regex_phone_number():
-    """Regex to match phone numbers in the format (123) 456-7890."""
-    return r"^\(\d{3}\) \d{3}-\d{4}$"
+def test_regex_phone():
+    example = r"^\(\d{3}\) \d{3}-\d{4}$"
 
-
-def test_regex_phone_number(regex_phone_number: str):
-    split = re_split(regex_phone_number)
+    split = re_split(example)
     assert split == [
+        "(",
         "\\(",
         "\\d",
         "{",
@@ -125,10 +119,12 @@ def test_regex_phone_number(regex_phone_number: str):
         "{",
         "4",
         "}",
+        ")",
     ]
 
     expand = re_expand(split)
     assert expand == [
+        "(",
         "\\(",
         "[",
         "0123456789",
@@ -150,10 +146,12 @@ def test_regex_phone_number(regex_phone_number: str):
         "{",
         "4",
         "}",
+        ")",
     ]
 
     norm = re_norm(expand)
     assert norm == [
+        "(",
         '"("',
         "(",
         '"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"',
@@ -187,18 +185,16 @@ def test_regex_phone_number(regex_phone_number: str):
         "(",
         '"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"',
         ")",
+        ")",
     ]
 
 
-@pytest.fixture
-def regex_url():
-    """Regex to match URLs."""
-    return r"^(https?:\/\/)?([a-fA-F0-5-]+\.)+[a-fA-F]{2,}(\/[a-fA-F0-5-._?&=]*)*$"
+def test_regex_url():
+    example = r"^(https?:\/\/)?([a-fA-F0-5-]+\.)+[a-fA-F]{2,}(\/[a-fA-F0-5-._?&=]*)*$"
 
-
-def test_regex_url(regex_url: str):
-    split = re_split(regex_url)
+    split = re_split(example)
     assert split == [
+        "(",
         "(",
         "https",
         "?",
@@ -250,10 +246,12 @@ def test_regex_url(regex_url: str):
         "*",
         ")",
         "*",
+        ")",
     ]
 
     expand = re_expand(split)
     assert expand == [
+        "(",
         "(",
         "https",
         "?",
@@ -282,28 +280,24 @@ def test_regex_url(regex_url: str):
         "*",
         ")",
         "*",
+        ")",
     ]
 
     norm = re_norm(expand)
     assert norm == [
-        "[",
         "(",
+        "[",
         '"http"',
         "[",
         '"s"',
         "]",
         '"://"',
-        ")",
         "]",
         "{",
-        "(",
         "{",
-        "(",
         '"a"|"b"|"c"|"d"|"e"|"f"|"A"|"B"|"C"|"D"|"E"|"F"|"0"|"1"|"2"|"3"|"4"|"5"|"-"',
-        ")",
         "}",
         '"."',
-        ")",
         "}",
         "(",
         '"a"|"b"|"c"|"d"|"e"|"f"|"A"|"B"|"C"|"D"|"E"|"F"',
@@ -313,37 +307,29 @@ def test_regex_url(regex_url: str):
         ")",
         "{",
         "[",
-        "(",
         '"a"|"b"|"c"|"d"|"e"|"f"|"A"|"B"|"C"|"D"|"E"|"F"',
-        ")",
         "]",
         "}",
         "{",
         "[",
-        "(",
         '"/"',
         "{",
         "[",
-        "(",
         '"a"|"b"|"c"|"d"|"e"|"f"|"A"|"B"|"C"|"D"|"E"|"F"|"0"|"1"|"2"|"3"|"4"|"5"|"-"|"."|"_"|"?"|"&"|"="',
-        ")",
+        "]",
+        "}",
         "]",
         "}",
         ")",
-        "]",
-        "}",
     ]
 
 
-@pytest.fixture
-def regex_date():
-    """Regex to match dates in the format YYYY-MM-DD."""
-    return r"^\d{4}-\d{2}-\d{2}$"
+def test_regex_date():
+    example = r"^\d{4}-\d{2}-\d{2}$"
 
-
-def test_regex_date(regex_date: str):
-    split = re_split(regex_date)
+    split = re_split(example)
     assert split == [
+        "(",
         "\\d",
         "{",
         "4",
@@ -358,10 +344,12 @@ def test_regex_date(regex_date: str):
         "{",
         "2",
         "}",
+        ")",
     ]
 
     expand = re_expand(split)
     assert expand == [
+        "(",
         "[",
         "0123456789",
         "]",
@@ -382,16 +370,25 @@ def test_regex_date(regex_date: str):
         "{",
         "2",
         "}",
+        ")",
     ]
 
     norm = re_norm(expand)
     assert norm == [
         "(",
+        "(",
         '"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"',
         ")",
         "(",
         '"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"',
         ")",
+        "(",
+        '"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"',
+        ")",
+        "(",
+        '"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"',
+        ")",
+        '"-"',
         "(",
         '"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"',
         ")",
@@ -405,25 +402,16 @@ def test_regex_date(regex_date: str):
         "(",
         '"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"',
         ")",
-        '"-"',
-        "(",
-        '"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"',
-        ")",
-        "(",
-        '"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"',
         ")",
     ]
 
 
-@pytest.fixture
-def regex_hex_color():
-    """Regex to match hex color codes (e.g., #FFFFFF)."""
-    return r"^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$"
+def test_regex_hex_color():
+    example = r"^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$"
 
-
-def test_regex_hex_color(regex_hex_color: str):
-    split = re_split(regex_hex_color)
+    split = re_split(example)
     assert split == [
+        "(",
         "#",
         "(",
         "[",
@@ -456,10 +444,12 @@ def test_regex_hex_color(regex_hex_color: str):
         "3",
         "}",
         ")",
+        ")",
     ]
 
     expand = re_expand(split)
     assert expand == [
+        "(",
         "#",
         "(",
         "[",
@@ -476,10 +466,12 @@ def test_regex_hex_color(regex_hex_color: str):
         "3",
         "}",
         ")",
+        ")",
     ]
 
     norm = re_norm(expand)
     assert norm == [
+        "(",
         '"#"',
         "(",
         "(",
@@ -511,18 +503,16 @@ def test_regex_hex_color(regex_hex_color: str):
         '"A"|"B"|"C"|"D"|"E"|"F"|"a"|"b"|"c"|"d"|"e"|"f"|"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"',
         ")",
         ")",
+        ")",
     ]
 
 
-@pytest.fixture
-def regex_username():
-    """Regex to match usernames with alphanumeric characters and underscores."""
-    return r"^[^a-zA-Z0-9_]{2,3}$"
+def test_regex_username():
+    example = r"^[^a-zA-Z0-9_]{2,3}$"
 
-
-def test_regex_username(regex_username: str):
-    split = re_split(regex_username)
+    split = re_split(example)
     assert split == [
+        "(",
         "[",
         "^",
         "a",
@@ -539,20 +529,24 @@ def test_regex_username(regex_username: str):
         "{",
         "2,3",
         "}",
+        ")",
     ]
 
     expand = re_expand(split)
     assert expand == [
+        "(",
         "[",
         "!\"#$%&'\\(\\)\\*\\+,\\-\\./:;<=>\\?@\\[\\\\]^`\\{\\|\\}~ \t\n\r\x0b\x0c",
         "]",
         "{",
         "2,3",
         "}",
+        ")",
     ]
 
     norm = re_norm(expand)
     assert norm == [
+        "(",
         "(",
         '"!"|"""|"#"|"$"|"%"|"&"|"\'"|"("|")"|"*"|"+"|","|"-"|"."|"/"|":"|";"|"<"|"="|">"|"?"|"@"|"["|"\\"|"]"|"^"|"`"|"{"|"|"|"}"|"~"|" "|"\t"|"\n"|"\r"|"\x0b"|"\x0c"',
         ")",
@@ -560,10 +554,9 @@ def test_regex_username(regex_username: str):
         '"!"|"""|"#"|"$"|"%"|"&"|"\'"|"("|")"|"*"|"+"|","|"-"|"."|"/"|":"|";"|"<"|"="|">"|"?"|"@"|"["|"\\"|"]"|"^"|"`"|"{"|"|"|"}"|"~"|" "|"\t"|"\n"|"\r"|"\x0b"|"\x0c"',
         ")",
         "[",
-        "(",
         '"!"|"""|"#"|"$"|"%"|"&"|"\'"|"("|")"|"*"|"+"|","|"-"|"."|"/"|":"|";"|"<"|"="|">"|"?"|"@"|"["|"\\"|"]"|"^"|"`"|"{"|"|"|"}"|"~"|" "|"\t"|"\n"|"\r"|"\x0b"|"\x0c"',
-        ")",
         "]",
+        ")",
     ]
 
 
@@ -578,6 +571,7 @@ def test_regex_ipv4(regex_ipv4: str):
     assert split == [
         "(",
         "(",
+        "(",
         "25",
         "[",
         "0",
@@ -653,6 +647,7 @@ def test_regex_ipv4(regex_ipv4: str):
         "9",
         "]",
         "?",
+        ")",
         ")",
     ]
 
@@ -660,6 +655,7 @@ def test_regex_ipv4(regex_ipv4: str):
     assert expand == [
         "(",
         "(",
+        "(",
         "25",
         "[",
         "012345",
@@ -716,12 +712,14 @@ def test_regex_ipv4(regex_ipv4: str):
         "]",
         "?",
         ")",
+        ")",
     ]
 
     norm = re_norm(expand)
     assert norm == [
         "(",
         "(",
+        "(",
         '"25"',
         "(",
         '"0"|"1"|"2"|"3"|"4"|"5"',
@@ -736,17 +734,13 @@ def test_regex_ipv4(regex_ipv4: str):
         ")",
         "|",
         "[",
-        "(",
         '"0"|"1"',
-        ")",
         "]",
         "(",
         '"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"',
         ")",
         "[",
-        "(",
         '"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"',
-        ")",
         "]",
         ")",
         '"."',
@@ -767,17 +761,13 @@ def test_regex_ipv4(regex_ipv4: str):
         ")",
         "|",
         "[",
-        "(",
         '"0"|"1"',
-        ")",
         "]",
         "(",
         '"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"',
         ")",
         "[",
-        "(",
         '"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"',
-        ")",
         "]",
         ")",
         '"."',
@@ -798,17 +788,13 @@ def test_regex_ipv4(regex_ipv4: str):
         ")",
         "|",
         "[",
-        "(",
         '"0"|"1"',
-        ")",
         "]",
         "(",
         '"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"',
         ")",
         "[",
-        "(",
         '"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"',
-        ")",
         "]",
         ")",
         '"."',
@@ -828,31 +814,25 @@ def test_regex_ipv4(regex_ipv4: str):
         ")",
         "|",
         "[",
-        "(",
         '"0"|"1"',
-        ")",
         "]",
         "(",
         '"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"',
         ")",
         "[",
-        "(",
         '"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"',
-        ")",
         "]",
+        ")",
         ")",
     ]
 
 
-@pytest.fixture
-def regex_custom_named_backreference():
-    """Regex to match simple HTML tags."""
-    return r"^<([a-z]+)(?<id>[^<]+)*(>(.*)<\/$<id>)>|\s+\/>)$"
+def test_regex_reference():
+    example = r"^<([a-z]+)(?<id>[^<]+)*(>(.*)<\/$<id>)>|\s+\/>$"
 
-
-def test_regex_custom_named_backreference(regex_custom_named_backreference: str):
-    split = re_split(regex_custom_named_backreference)
+    split = re_split(example)
     assert split == [
+        "(",
         "<",
         "(",
         "[",
@@ -890,6 +870,7 @@ def test_regex_custom_named_backreference(regex_custom_named_backreference: str)
 
     expand = re_expand(split)
     assert expand == [
+        "(",
         "<",
         "(",
         "[",
@@ -928,24 +909,19 @@ def test_regex_custom_named_backreference(regex_custom_named_backreference: str)
 
     norm = re_norm(expand)
     assert norm == [
+        "(",
         '"<"',
         "(",
         "{",
-        "(",
         '"a"|"b"|"c"|"d"|"e"|"f"|"g"|"h"|"i"|"j"|"k"|"l"|"m"|"n"|"o"|"p"|"q"|"r"|"s"|"t"|"u"|"v"|"w"|"x"|"y"|"z"',
-        ")",
         "}",
         ")",
         "{",
         "[",
-        "(",
         "?<id>",
         "{",
-        "(",
         '"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"|"a"|"b"|"c"|"d"|"e"|"f"|"g"|"h"|"i"|"j"|"k"|"l"|"m"|"n"|"o"|"p"|"q"|"r"|"s"|"t"|"u"|"v"|"w"|"x"|"y"|"z"|"A"|"B"|"C"|"D"|"E"|"F"|"G"|"H"|"I"|"J"|"K"|"L"|"M"|"N"|"O"|"P"|"Q"|"R"|"S"|"T"|"U"|"V"|"W"|"X"|"Y"|"Z"|"!"|"""|"#"|"$"|"%"|"&"|"\'"|"("|")"|"*"|"+"|","|"-"|"."|"/"|":"|";"|"="|">"|"?"|"@"|"["|"\\"|"]"|"^"|"_"|"`"|"{"|"|"|"}"|"~"|" "|"\t"|"\n"|"\r"|"\x0b"|"\x0c"',
-        ")",
         "}",
-        ")",
         "]",
         "}",
         "(",
@@ -953,9 +929,7 @@ def test_regex_custom_named_backreference(regex_custom_named_backreference: str)
         "(",
         "{",
         "[",
-        "(",
         '"0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"|"a"|"b"|"c"|"d"|"e"|"f"|"g"|"h"|"i"|"j"|"k"|"l"|"m"|"n"|"o"|"p"|"q"|"r"|"s"|"t"|"u"|"v"|"w"|"x"|"y"|"z"|"A"|"B"|"C"|"D"|"E"|"F"|"G"|"H"|"I"|"J"|"K"|"L"|"M"|"N"|"O"|"P"|"Q"|"R"|"S"|"T"|"U"|"V"|"W"|"X"|"Y"|"Z"|"!"|"""|"#"|"$"|"%"|"&"|"\'"|"("|")"|"*"|"+"|","|"-"|"."|"/"|":"|";"|"<"|"="|">"|"?"|"@"|"["|"\\"|"]"|"^"|"_"|"`"|"{"|"|"|"}"|"~"|" "|"\t"|"\r"|"\x0b"|"\x0c"',
-        ")",
         "]",
         "}",
         ")",
@@ -965,55 +939,143 @@ def test_regex_custom_named_backreference(regex_custom_named_backreference: str)
         '">"',
         "|",
         "{",
-        "(",
         '" "|"\t"|"\n"|"\r"|"\x0c"|"\x0b"',
-        ")",
         "}",
         '"/>"',
         ")",
     ]
 
 
-@pytest.fixture
-def regex_unsupported_capturing_group():
-    """Regex to match simple HTML tags."""
-    return r"^<([a-z]+)([^<]+)*(?:>(.*)<\/\1)>|\s+\/>)$"
+def test_error_capture_group():
+    example = r"^<([a-z]+)([^<]+)*(?:>(.*)<\/\1)>|\s"
 
+    with pytest.raises(TrailError) as exc_info:
+        re_split(example)
 
-def test_regex_unsupported_capturing_group(regex_unsupported_capturing_group: str):
-    with pytest.raises(InvalidRegex) as exc_info:
-        re_split(regex_unsupported_capturing_group)
-
-    assert str(exc_info.value) == "Question-mark construct not supported at 19 >> (?:."
-
-
-@pytest.fixture
-def regex_unsupported_standard_backreference():
-    """Regex to match simple HTML tags."""
-    return r"^<([a-z]+)([^<]+)*(>(.*)<\/\1)>|\s+\/>)$"
-
-
-def test_regex_unsupported_standard_backreference(
-    regex_unsupported_standard_backreference: str,
-):
-    with pytest.raises(InvalidRegex) as exc_info:
-        re_split(regex_unsupported_standard_backreference)
-
-    assert (
-        str(exc_info.value)
-        == "Not supported, use `(?<alphanumeric>...)` to capture, and `$<alphanumeric>` to load instead."
+    message = format_error(
+        "Unsupported question-mark construct.",
+        "^<([a-z]+)([^<]+)*",
+        "(?:>",
     )
 
-
-@pytest.fixture
-def regex_unsupported_unicode():
-    return r"[\u00A0-\uFFFF\w\d\s]{2,}|[^\x00-\x7F]+"
+    assert str(exc_info.value) == message
 
 
-def test_regex_unsupported_unicode(
-    regex_unsupported_unicode: str,
-):
-    with pytest.raises(InvalidRegex) as exc_info:
-        re_split(regex_unsupported_unicode)
+def test_error_backreference():
+    example = r"^<([a-z]+)([^<]+)*(>(.*)<\/\1)>|\s+\/>)$"
 
-    assert str(exc_info.value) == "Escape character \\u is not supported."
+    with pytest.raises(TrailError) as exc_info:
+        re_split(example)
+
+    message = format_error(
+        "Unsupported backreference format, use `(?<alphanumeric>...)` to capture, and `$<alphanumeric>` to load instead.",
+        "^<([a-z]+)([^<]+)*(>(.*)<\\/",
+        "\\1",
+    )
+
+    assert str(exc_info.value) == message
+
+
+def test_error_bracket():
+    example = r"^<(a-z]+)([^<]+)*(>(.*)<\/\1)>|\s+\/>)$"
+
+    with pytest.raises(TrailError) as exc_info:
+        re_split(example)
+
+    message = format_error(
+        "Unmatched closing bracket `]`.",
+        "^<(a-z",
+        "]",
+    )
+
+    assert str(exc_info.value) == message
+
+
+def test_error_quantifier_invalid():
+    example = r"*$"
+
+    with pytest.raises(TrailError) as exc_info:
+        re_split(example)
+
+    message = format_error(
+        "Quantifiers must be precedented by either an expression or a group.",
+        "",
+        "*",
+    )
+
+    assert str(exc_info.value) == message
+
+
+def test_error_quantifier_precedence():
+    example = r"^[\d](*\D)*$"
+
+    with pytest.raises(TrailError) as exc_info:
+        re_split(example)
+
+    message = format_error(
+        "Invalid quantifier precedence.",
+        "^[\\d]",
+        "(*",
+    )
+
+    assert str(exc_info.value) == message
+
+
+def test_error_interval_quantifier_invalid():
+    example = r"^[\d]{T_\$%}$"
+
+    with pytest.raises(TrailError) as exc_info:
+        re_split(example)
+
+    message = format_error(
+        "Invalid interval quantifier.",
+        "^[\\d]",
+        "{T_\\$%}",
+    )
+
+    assert str(exc_info.value) == message
+
+
+def test_error_interval_quantifier_bounds():
+    example = r"^[\d]{3, 2}$"
+
+    with pytest.raises(TrailError) as exc_info:
+        re_split(example)
+
+    message = format_error(
+        "Interval quantifier bounds out of order.",
+        "^[\\d]",
+        "{3, 2}",
+    )
+
+    assert str(exc_info.value) == message
+
+
+def test_error_interval_quantifier_precedence():
+    example = r"^[\d]+{3}$"
+
+    with pytest.raises(TrailError) as exc_info:
+        re_split(example)
+
+    message = format_error(
+        "Invalid quantifier precedence.",
+        "^[\\d]",
+        "+{",
+    )
+
+    assert str(exc_info.value) == message
+
+
+def test_error_interval_quantifier_succession():
+    example = r"^[\d]{3}+$"
+
+    with pytest.raises(TrailError) as exc_info:
+        re_split(example)
+
+    message = format_error(
+        "Invalid quantifier precedence.",
+        "^[\\d]{3",
+        "}+",
+    )
+
+    assert str(exc_info.value) == message
