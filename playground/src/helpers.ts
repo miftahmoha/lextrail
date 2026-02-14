@@ -2,7 +2,7 @@ import { Network, Options } from "vis";
 import { DOM } from './interface'
 import {
 	VisNet,
-	Ts_Action, Ts_Network
+	Ts_Action, Ts_Network,
 } from './types';
 
 export function getRequiredElement<T extends HTMLElement>(id: string): T {
@@ -27,15 +27,20 @@ export function updatePlayPauseButton(DOM: DOM, isPaused: boolean): void {
 	}
 }
 
+export function updateFramesButtons(DOM: DOM, currentFrame: number, totalFrames: number) {
+	DOM.buttons.btnPrev.disabled = currentFrame <= 1;
+	DOM.buttons.btnFirst.disabled = currentFrame <= 1;
+	DOM.buttons.btnNext.disabled = currentFrame >= totalFrames;
+	DOM.buttons.btnLast.disabled = currentFrame >= totalFrames;
+}
+
 export function updateControlButtons(DOM: DOM, currentFrame: number, totalFrames: number,
 	isPaused: boolean, isInterrupted: boolean, isComplete: boolean) {
-	DOM.buttons.btnPause.disabled = isInterrupted || isComplete;
+	DOM.buttons.btnPause.disabled = isInterrupted;
 	updatePlayPauseButton(DOM, isPaused);
-	DOM.buttons.btnPrev.disabled = currentFrame <= 1 || isInterrupted;
-	DOM.buttons.btnNext.disabled = currentFrame >= totalFrames || isInterrupted;
+	updateFramesButtons(DOM, currentFrame, totalFrames)
 	DOM.buttons.btnInterrupt.disabled = isInterrupted || isComplete;
-	DOM.buttons.btnDelay.disabled = isInterrupted || isComplete;
-	DOM.inputs.delayInput.disabled = isInterrupted || isComplete;
+	DOM.buttons.btnReset.disabled = isInterrupted;
 }
 
 export function updateGraphFontColors(networks: Ts_Network[], root: HTMLElement): void {
@@ -43,7 +48,7 @@ export function updateGraphFontColors(networks: Ts_Network[], root: HTMLElement)
 
 	const sections = networks.length;
 
-	// Update thumbnail graphs.
+	// Update thumbnails.
 	for (let i: number = 0; i < sections; i++) {
 		networks[i].sides.forEach((graph) => {
 			if (graph) {
@@ -60,7 +65,7 @@ export function updateGraphFontColors(networks: Ts_Network[], root: HTMLElement)
 		});
 
 
-		// Update main graph.
+		// Update front.
 		if (networks[i].front) {
 			const nodes = (networks[i].front as VisNet).body.data.nodes;
 			nodes.forEach(node => {

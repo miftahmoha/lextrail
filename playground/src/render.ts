@@ -1,11 +1,11 @@
 import { Network, Options } from "vis";
-import { referNetwork, moveNetwork } from './helpers';
+import { referNetwork } from './helpers';
 import { DOM } from './interface'
 import { initializeLayout, updateLayout } from './layout'
 import {
     Optional, Undefinable, VisNet,
     Ts_Add, Ts_Mov, Ts_Del, Ts_Update, Ts_Network, Ts_Interface, Ts_State,
-    Py_Data, Py_CFGStatefulGraph, Py_CFGGenerationState, Py_Graph
+    Py_Data, Py_TrailLayer, Py_TrailState, Py_Graph,
 } from './types'
 
 // [NOTE] Needs to check the theme each time it is called.
@@ -41,6 +41,9 @@ export const VIS_MAIN_OPTIONS = (): Options => ({
             updateInterval: 25,
         },
     },
+    layout: {
+        randomSeed: 42
+    },
 });
 
 export const VIS_SIDE_OPTIONS: Options = {
@@ -65,6 +68,9 @@ export const VIS_SIDE_OPTIONS: Options = {
             highlight: '#06b6d4'
         },
         width: 1
+    },
+    layout: {
+        randomSeed: 42
     },
 };
 
@@ -127,7 +133,7 @@ function updateSidebarItem(
 }
 
 function createSidebarItem(
-    sidebar: HTMLElement, indexIn: number, graphData: Py_Graph, interface_: Ts_Interface, network: Ts_Network
+    sidebar: HTMLElement, indexIn: number, graphData: Py_Graph, interface_: Ts_Interface, network: Ts_Network, active: HTMLElement[]
 ): void {
     function extractIndexOut(id: string) {
         // [NOTE] Elements of an ambiguous sidebar have a suffix `_index` which specifies the index.
@@ -157,24 +163,28 @@ function createSidebarItem(
     }
 
     function setClickHandler(
-        sidebar: HTMLElement, sidebarItem: HTMLElement, interface_: Ts_Interface, network: Ts_Network, indexIn: number
+        indexIn: number, interface_: Ts_Interface, network: Ts_Network, active: HTMLElement[]
     ): void {
+        const sidebarItems = interface_.sides.children;
+        const sidebarItem = sidebarItems[indexIn] as HTMLElement;
+
         sidebarItem.onclick = () => {
-            Array.from(sidebar.children).forEach(child => {
+            Array.from(sidebarItems).forEach(child => {
                 child.classList.remove('active');
             });
 
             sidebarItem.classList.add('active');
 
             const frontItem = interface_.front as HTMLElement;
-
-            network.front = moveNetwork(network.sides[indexIn], frontItem, VIS_MAIN_OPTIONS());
+            network.front = referNetwork(network.sides[indexIn], frontItem, VIS_MAIN_OPTIONS());
 
             // [NOTE] Need to remove the animation class in order to trigger it again.
             frontItem.classList.add('graph-fade');
             frontItem.addEventListener('animationend', () => {
                 frontItem.classList.remove('graph-fade');
             });
+
+            active[0] = sidebarItem
         };
 
     }
@@ -187,7 +197,7 @@ function createSidebarItem(
     // Add a fading animation.
     sidebarItem.classList.add('graph-fade');
 
-    setClickHandler(sidebar, sidebarItem, interface_, network, indexIn);
+    setClickHandler(indexIn, interface_, network, active);
 
     // Associate the network to the sidebar item through the thumbnail.
     const thumbnail = sidebarItem.children[1] as HTMLElement;
@@ -197,7 +207,7 @@ function createSidebarItem(
 }
 
 function addGraphs(
-    additions: Ts_Add, interface_: Ts_Interface, network: Ts_Network,
+    additions: Ts_Add, interface_: Ts_Interface, network: Ts_Network, active: HTMLElement[]
 ): void {
     for (const [key, graphData] of Object.entries(additions)) {
         const index = parseInt(key, 10);
@@ -207,7 +217,7 @@ function addGraphs(
         if (sidebarItem) {
             updateSidebarItem(sidebarItem, index, graphData, network);
         } else {
-            createSidebarItem(sidebar, index, graphData, interface_, network);
+            createSidebarItem(sidebar, index, graphData, interface_, network, active);
         }
     };
 }
@@ -244,7 +254,7 @@ function setActive(interface_: Ts_Interface, network: Ts_Network, active: HTMLEl
     active[0] = activeItem;
 }
 
-export function moveHighlight(network: Network, fromId: Undefinable<string>, toId: string): void {
+export function moveHighlight(network: Network, fromId: Undefinable<string>, toId: string, kind: string): void {
     // [TODO] Add a check that `fromNode` should be in a highlighted state if not null.
     const nodes = (network as VisNet).body.data.nodes;
 
@@ -262,6 +272,8 @@ export function moveHighlight(network: Network, fromId: Undefinable<string>, toI
         });
     }
 
+    const color = kind == "SymbolKind.TERMINAL" ? '#06b6d4' : kind == "SymbolKind.END" ? '#f87171' : kind == "SymbolKind.REFERENCE" ? '#ebc2ce' : '#7fc1c6';
+
     const toNode = toId ? nodes.get(toId) : null;
     if (!toNode) {
         throw new Error("Highlight sent to an invalid node.");
@@ -270,12 +282,12 @@ export function moveHighlight(network: Network, fromId: Undefinable<string>, toI
         nodes.update({
             id: toId,
             color: {
-                background: '#06b6d4',
-                border: '#06b6d4'
+                background: color,
+                border: color,
             },
             shadow: {
                 enabled: true,
-                color: '#06b6d4',
+                color: color,
                 size: 10,
                 x: 0,
                 y: 0
@@ -289,14 +301,14 @@ function moveGraphs(moves: Ts_Mov, network: Ts_Network) {
         if (!move.to) continue;
         const index = Number(sindex);
         const sideNetwork = network.sides;
-        moveHighlight(sideNetwork[index], move?.from?.id, move?.to?.id);
+        moveHighlight(sideNetwork[index], move?.from?.id, move?.to?.id, move?.to?.kind);
     }
 }
 
-export async function updateGraphs(state: Ts_State, updates: Ts_Update[] | Ts_Update[]) {
+export async function updateGraphs(state: Ts_State, updates: Ts_Update[]) {
     const promises = updates.map(async (update, i) => {
         delGraphs(update.delu, state.interfaces[i], state.networks[i]);
-        addGraphs(update.addu, state.interfaces[i], state.networks[i]);
+        addGraphs(update.addu, state.interfaces[i], state.networks[i], state.active[i]);
         // Sets the active item on the front display.
         setActive(state.interfaces[i], state.networks[i], state.active[i]);
         moveGraphs(update.movu, state.networks[i]);
@@ -305,18 +317,19 @@ export async function updateGraphs(state: Ts_State, updates: Ts_Update[] | Ts_Up
     await Promise.all(promises);
 }
 
-export function createUpdate(prevStates: Py_CFGStatefulGraph[], currStates: Py_CFGStatefulGraph[]): Ts_Update {
+export function createUpdate(prevStates: Py_TrailLayer[], currStates: Py_TrailLayer[]): Ts_Update {
     let addu: Ts_Add = {};
     let movu: Ts_Mov = {};
     let delu: Ts_Del = {};
 
     const min_len = Math.min(prevStates?.length || 0, currStates.length);
 
+    // === MOVE ===
     for (let i = 0; i < min_len; i++) {
         const [prevState, currState] = [prevStates[i], currStates[i]];
 
         if (JSON.stringify(prevState) !== JSON.stringify(currState)) {
-            if (JSON.stringify(prevState.graph) !== JSON.stringify(currState.graph)) {
+            if (JSON.stringify(prevState.graph) === JSON.stringify(currState.graph)) {
                 if (!prevState.state || !currState.state)
                     throw Error(`Invalid states for either ${prevState} or ${currState}.`);
 
@@ -340,7 +353,7 @@ export function createUpdate(prevStates: Py_CFGStatefulGraph[], currStates: Py_C
         }
     }
 
-    // Handle deletions.
+    // === DEL ===
     if ((prevStates?.length || 0) > currStates.length) {
         for (let i = min_len; i < prevStates.length; i++) {
             const prevState = prevStates[i];
@@ -355,7 +368,7 @@ export function createUpdate(prevStates: Py_CFGStatefulGraph[], currStates: Py_C
         }
     }
 
-    // Handle additions.
+    // === ADD ===
     if ((prevStates?.length || 0) < currStates.length) {
         for (let i = min_len; i < currStates.length; i++) {
             const currState = currStates[i];
@@ -373,36 +386,33 @@ export function createUpdate(prevStates: Py_CFGStatefulGraph[], currStates: Py_C
     return { "addu": addu, "movu": movu, "delu": delu };
 }
 
-export function updateFrame(DOM: DOM, state: Ts_State, newData: Py_Data) {
-    const results: Py_CFGGenerationState[][] = newData.results;
+export async function updateFrame(DOM: DOM, state: Ts_State, newData: Py_Data) {
+    const results: Py_TrailState[][] = newData.results;
 
+    const prevResults = results[state.frame - 1];
+    const nextResults = results[results.length - 1];
 
-    for (let i = state.frame; i < results.length; i++) {
-        const prevResults = results[i - 1];
-        const nextResults = results[i];
+    // [NOTE] If there is an increase of states within an ambiguous node, updates from the FIRST
+    // current node to the rest of nodes are created.
+    const updates = nextResults.map((nextStates, i) =>
+        createUpdate(prevResults?.[i] ?? prevResults?.[0], nextStates)
+    );
 
-        // [NOTE] If there is an increase of states within an ambiguous node, updates from the FIRST
-        // current node to the rest of nodes are created.
-        const updates = nextResults.map((nextStates, i) =>
-            createUpdate(prevResults?.[i] ?? prevResults?.[0], nextStates)
-        );
+    const nextLength = updates.length;
+    const currLength = state.networks.length;
 
-        const nextLength = updates.length;
-        const currLength = state.networks.length;
-
-        if (currLength === 0) {
-            initializeLayout(DOM, state, nextLength);
-        } else {
-            // If `(currLength - prevLength) != 0` means either (1) we've got an ambiguity and we've 
-            // got to render every possible graph, or (2) we've come from one and we've got to render
-            // the chosen graph.
-            // If `(currLength - prevLength) == 0` means we've got a (chosen) subgraph of ambiguities
-            // from the original graphs.
-            updateLayout(DOM, state, nextLength);
-        }
-
-        updateGraphs(state, updates);
+    if (currLength === 0) {
+        initializeLayout(DOM, state, nextLength);
+    } else {
+        // If `(currLength - prevLength) != 0` means either (1) we've got an ambiguity and we've 
+        // got to render every possible graph, or (2) we've come from one and we've got to render
+        // the chosen graph.
+        // If `(currLength - prevLength) == 0` means we've got a (chosen) subgraph of ambiguities
+        // from the original graphs.
+        updateLayout(DOM, state, nextLength);
     }
+
+    updateGraphs(state, updates);
 
     // Update state.
     state.response.data = newData;
@@ -410,6 +420,6 @@ export function updateFrame(DOM: DOM, state: Ts_State, newData: Py_Data) {
 
     DOM.display.frameCounter.textContent = `Frame ${state.frame}/${state.frame}`;
 
-    // Update LLM response (fragmented strings allows simple transitions to previous frames).
+    // Fragmented strings allow simple transitions to previous frames.
     DOM.display.llmResponse.value = newData.response.slice(0, state.frame).join('') || "No response available";
 }

@@ -2,19 +2,25 @@ import { Network } from "vis";
 import { moveNetwork, referNetwork, cloneContainer } from './helpers';
 import { DOM } from './interface';
 import { VIS_MAIN_OPTIONS, VIS_SIDE_OPTIONS } from './render'
-import { Ts_Interface, Ts_State } from './types';
+import { Ts_Interface, Ts_Network, Ts_State, Undefinable } from './types';
 
 function createSidebarElement(index: number): HTMLDivElement {
 	const sidebarItems = document.createElement('div');
 	sidebarItems.id = `sidebar-items_${index}`;
-	sidebarItems.classList.add('sidebar-items');
+	sidebarItems.classList.add('current-subsidebar-container', 'graph-fade');
+	sidebarItems.addEventListener('animationend', () => {
+		sidebarItems.classList.remove('graph-fade');
+	});
 	return sidebarItems;
 }
 
 function createFrontElement(index: number): HTMLDivElement {
 	const frontItem = document.createElement('div');
 	frontItem.id = `graph-container_${index}`;
-	frontItem.classList.add('current-subgraph-container');
+	frontItem.classList.add('current-subgraph-container', 'graph-fade');
+	frontItem.addEventListener('animationend', () => {
+		frontItem.classList.remove('graph-fade');
+	});
 	return frontItem;
 }
 
@@ -107,8 +113,14 @@ function cloneInterface(DOM: DOM, state: Ts_State, index: number): Ts_Interface 
 	}
 
 	const interfaceSidesClone = cloneContainer(interfaceSides);
-
 	DOM.display.currentSidebar.appendChild(interfaceSidesClone);
+
+	// Avoids a little visual glitch with item selection when the next frame is a duplicate.
+	const sidebarItems = interfaceSidesClone.children;
+	Array.from(sidebarItems).forEach(child => {
+		child.classList.remove('active');
+	});
+
 
 	const interfaceFront = interface_.front;
 	if (!interfaceFront) {
@@ -116,14 +128,7 @@ function cloneInterface(DOM: DOM, state: Ts_State, index: number): Ts_Interface 
 	}
 
 	const interfaceFrontClone = cloneContainer(interfaceFront);
-
-	// Brings the cloned front to the main display.
 	DOM.display.currentDisplay.appendChild(interfaceFrontClone);
-
-	interfaceFrontClone.classList.add('current-subgraph-container', 'graph-fade');
-	interfaceFrontClone.addEventListener('animationend', () => {
-		interfaceFrontClone.classList.remove('graph-fade');
-	});
 
 	return {
 		front: interfaceFrontClone,
@@ -173,6 +178,33 @@ function cloneNetwork(state: Ts_State, interfaceClone: Ts_Interface, index: numb
 	};
 }
 
+export function resetHandlers(interface_: Ts_Interface, network: Ts_Network, active: HTMLElement[]): void {
+	const sidebarItems = Array.from(interface_.sides.children) as HTMLElement[];
+
+	for (let i = 0; i < sidebarItems.length; i++) {
+		const sidebarItem = sidebarItems[i];
+
+		sidebarItem.onclick = () => {
+			Array.from(sidebarItems).forEach(sidebarItem => {
+				sidebarItem.classList.remove('active');
+			});
+
+			sidebarItem.classList.add('active');
+
+			const frontItem = interface_.front as HTMLElement;
+			network.front = referNetwork(network.sides[i], frontItem, VIS_MAIN_OPTIONS());
+
+			// [NOTE] Need to remove the animation class in order to trigger it again.
+			frontItem.classList.add('graph-fade');
+			frontItem.addEventListener('animationend', () => {
+				frontItem.classList.remove('graph-fade');
+			});
+
+			active[0] = sidebarItem
+		};
+	}
+}
+
 export function clonePlaceholders(DOM: DOM, state: Ts_State, index: number): void {
 	const clonedInterface = cloneInterface(DOM, state, index);
 	state.interfaces.push(clonedInterface);
@@ -181,6 +213,8 @@ export function clonePlaceholders(DOM: DOM, state: Ts_State, index: number): voi
 	state.networks.push(clonedNetwork);
 
 	state.active.push([]);
+
+	resetHandlers(clonedInterface, clonedNetwork, state.active.at(-1)!)
 }
 
 export function updateLayout(DOM: DOM, state: Ts_State, nextLength: number): void {

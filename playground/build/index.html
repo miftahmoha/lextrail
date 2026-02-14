@@ -1,0 +1,47 @@
+<html class="light-mode">
+
+<head>
+    <title>Playground</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="vis-network.min.js"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Quicksand:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
+    <link href="styles.css" rel="stylesheet" type="text/css" />
+    <script src="script.js" defer></script>
+</head>
+
+<body>
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <h2>Subgraphs</h2>
+            <div class="pulsing-dot"></div>
+        </div>
+        <p>Select a subgraph to visualize</p>
+        <div class="current-sidebar-container" id="current-sidebar"></div>
+    </div>
+
+    <div class="main-content">
+        <button class="theme-toggle" id="theme-toggle">
+            <i class="fas fa-moon"></i>
+        </button>
+        <h1>Lextrail <span class="subtitle">PLAYGROUND</span></h1>
+        <div class="status" id="status">Loading graphs from server...</div>
+
+        <div class="controls">
+            <button id="btn-first" disabled><i class="fas fa-step-backward"></i></button>
+            <button id="btn-prev" disabled><i class="fas fa-chevron-left"></i></button>
+            <button id="btn-next" disabled><i class="fas fa-chevron-right"></i></button>
+            <button id="btn-last" disabled><i class="fas fa-step-forward"></i></button>
+            <div class="frame-counter" id="frame-counter">Frame 0/0</div>
+            <button id="btn-pause"><i class="fas fa-pause"></i></button>
+            <button id="btn-interrupt" class="danger"><i class="fas fa-stop"></i></button>
+            <button id="btn-reset"><i class="fas fa-sync-alt"></i></button>
+        </div>
+        <div class="current-graph-container" id="current-display">
+        </div>
+        <textarea class="llm-response" id="llm-response" readonly>Waiting for LLM response...</textarea>
+    </div>
+</body>
+
+</html>

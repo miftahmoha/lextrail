@@ -1,4 +1,4 @@
-import { getRequiredElement, sendControlCommand, updateGraphFontColors } from './helpers';
+import { getRequiredElement, sendControlCommand, updateFramesButtons, updateGraphFontColors } from './helpers';
 import { updateLayout, removeNetwork, removeInterface } from './layout';
 import { createUpdate } from './render';
 import {
@@ -11,16 +11,12 @@ export type DOM = {
 
 	buttons: {
 		btnPrev: HTMLButtonElement;
-		btnNext: HTMLButtonElement;
 		btnPause: HTMLButtonElement;
+		btnNext: HTMLButtonElement;
+		btnFirst: HTMLButtonElement;
+		btnLast: HTMLButtonElement;
 		btnInterrupt: HTMLButtonElement;
 		btnReset: HTMLButtonElement;
-		btnDelay: HTMLButtonElement;
-	},
-
-	inputs: {
-		delayInput: HTMLInputElement;
-		delaySlider: HTMLInputElement;
 	},
 
 	theme: {
@@ -44,16 +40,12 @@ export const DOM: DOM = {
 
 	buttons: {
 		btnPrev: getRequiredElement<HTMLButtonElement>('btn-prev'),
-		btnNext: getRequiredElement<HTMLButtonElement>('btn-next'),
 		btnPause: getRequiredElement<HTMLButtonElement>('btn-pause'),
+		btnNext: getRequiredElement<HTMLButtonElement>('btn-next'),
+		btnFirst: getRequiredElement<HTMLButtonElement>('btn-first'),
+		btnLast: getRequiredElement<HTMLButtonElement>('btn-last'),
 		btnInterrupt: getRequiredElement<HTMLButtonElement>('btn-interrupt'),
 		btnReset: getRequiredElement<HTMLButtonElement>('btn-reset'),
-		btnDelay: getRequiredElement<HTMLButtonElement>('btn-delay'),
-	},
-
-	inputs: {
-		delayInput: getRequiredElement<HTMLInputElement>('delay-input'),
-		delaySlider: getRequiredElement<HTMLInputElement>('delay-slider'),
 	},
 
 	theme: {
@@ -75,6 +67,8 @@ DOM.theme.icon = DOM.theme.themeToggle.querySelector('i');
 
 export async function addEventListeners(DOM: DOM, state: Ts_State, updateGraphs: LTCall) {
 	DOM.buttons.btnPrev.addEventListener('click', () => {
+		const totalFrames = state.response.data.results.length;
+
 		const prevResults = state.response.data.results[state.frame - 1];
 		const nextResults = state.response.data.results[state.frame - 2];
 
@@ -93,15 +87,16 @@ export async function addEventListeners(DOM: DOM, state: Ts_State, updateGraphs:
 
 		updateGraphs(state, updates);
 
-		// Update frame.
 		state.frame -= 1;
 
-		// Update counter.
-		DOM.display.frameCounter.textContent = `Frame ${state.frame}/${state.response.data.results.length}`;
+		DOM.display.frameCounter.textContent = `Frame ${state.frame}/${totalFrames}`;
 
+		updateFramesButtons(DOM, state.frame, totalFrames)
 	});
 
 	DOM.buttons.btnNext.addEventListener('click', () => {
+		const totalFrames = state.response.data.results.length;
+
 		const prevResults = state.response.data.results[state.frame - 1];
 		const nextResults = state.response.data.results[state.frame];
 
@@ -120,11 +115,67 @@ export async function addEventListeners(DOM: DOM, state: Ts_State, updateGraphs:
 
 		updateGraphs(state, updates);
 
-		// Update frame.
 		state.frame += 1;
 
-		// Update counter.
-		DOM.display.frameCounter.textContent = `Frame ${state.frame}/${state.response.data.results.length}`;
+		DOM.display.frameCounter.textContent = `Frame ${state.frame}/${totalFrames}`;
+
+		updateFramesButtons(DOM, state.frame, totalFrames)
+	});
+
+	DOM.buttons.btnFirst.addEventListener('click', () => {
+		const totalFrames = state.response.data.results.length;
+
+		const prevResults = state.response.data.results[state.frame - 1];
+		const nextResults = state.response.data.results[0];
+
+		const updates = nextResults.map((nextStates, i) =>
+			createUpdate(prevResults[i] ?? prevResults[0], nextStates)
+		);
+
+		const nextLength = nextResults.length;
+		const prevLength = state.networks.length;
+
+		if (prevLength === 0) {
+			throw Error("Cannot proceed from an empty state.");
+		} else {
+			updateLayout(DOM, state, nextLength);
+		}
+
+		updateGraphs(state, updates);
+
+		state.frame = 1;
+
+		DOM.display.frameCounter.textContent = `Frame ${state.frame}/${totalFrames}`;
+
+		updateFramesButtons(DOM, state.frame, totalFrames)
+	});
+
+	DOM.buttons.btnLast.addEventListener('click', () => {
+		const totalFrames = state.response.data.results.length;
+
+		const prevResults = state.response.data.results[state.frame - 1];
+		const nextResults = state.response.data.results[totalFrames - 1];
+
+		const updates = nextResults.map((nextStates, i) =>
+			createUpdate(prevResults[i] ?? prevResults[0], nextStates)
+		);
+
+		const nextLength = nextResults.length;
+		const prevLength = state.networks.length;
+
+		if (prevLength === 0) {
+			throw Error("Cannot proceed from an empty state.");
+		} else {
+			updateLayout(DOM, state, nextLength);
+		}
+
+		updateGraphs(state, updates);
+
+		state.frame = totalFrames;
+
+		DOM.display.frameCounter.textContent = `Frame ${state.frame}/${totalFrames}`;
+
+		updateFramesButtons(DOM, state.frame, totalFrames)
 	});
 
 	DOM.buttons.btnPause.addEventListener('click', () => {
@@ -143,13 +194,10 @@ export async function addEventListeners(DOM: DOM, state: Ts_State, updateGraphs:
 
 			// Increments a run state to avoid updates until Python sends the reset data.
 			state.response.setting.run += 1;
-
-			// Reset status.
-			DOM.display.status.innerHTML = "Loading graphs from server...";
-
-			// Reset state.
-			state.fetch = true;
 			state.frame = 0;
+			state.fetch = true;
+
+			DOM.display.status.innerHTML = "Loading graphs from server...";
 
 			const size = state.networks.length;
 
@@ -170,23 +218,6 @@ export async function addEventListeners(DOM: DOM, state: Ts_State, updateGraphs:
 				throw Error("Interfaces were not reset.")
 			}
 		}
-	});
-
-	DOM.buttons.btnDelay.addEventListener('click', () => {
-		let delay = state.delay
-		delay = parseInt(DOM.inputs.delayInput.value);
-		if (!isNaN(delay) && delay >= 0) {
-			sendControlCommand('delay', { rate: delay / 1000 });
-		}
-	});
-
-	// Inputs.
-	DOM.inputs.delaySlider.addEventListener('input', () => {
-		DOM.inputs.delayInput.value = DOM.inputs.delaySlider.value;
-	});
-
-	DOM.inputs.delayInput.addEventListener('input', () => {
-		DOM.inputs.delaySlider.value = DOM.inputs.delayInput.value;
 	});
 
 	// Theme.
