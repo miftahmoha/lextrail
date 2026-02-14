@@ -1,66 +1,33 @@
 import os
-from collections import defaultdict, deque
-from itertools import chain
-from typing import Deque
 
-from lextrail.base import Symbol, Symbol_Kind, SymbolGraph
+from collections import deque
+from typing import TYPE_CHECKING, Deque
 
-
-def is_end_def_symbol(symbol: Symbol) -> bool:
-    return symbol.content == "END" and symbol.kind == Symbol_Kind.END
+if TYPE_CHECKING:
+    from lextrail.build import Symbol, SymbolGraph
 
 
-def is_escaped(string: str, index: int) -> bool:
-    if index < 0:
-        return False
-    j = 0
-    while string[index] == "\\":
-        j += 1
+class TrailError(Exception):
+    pass
+
+
+def consume_lexeme(lexemes: list[str], accumulate: list[str]):
+    if accumulate:
+        lexemes.append("".join(accumulate))
+        accumulate.clear()
+
+
+def is_escaped(input: list[str], index: int) -> bool:
+    count = 0
+    index -= 1
+    while index >= 0 and input[index] == "\\":
+        count += 1
         index -= 1
-    return j % 2 != 0
+    return count % 2 == 1
 
 
-def remove_single_nodes(
-    symbol_tree: dict[Symbol, list[Symbol]],
-) -> dict[Symbol, list[Symbol]]:
-    return defaultdict(list, ((k, v) for k, v in symbol_tree.items() if v))
-
-
-def safe_node_connect(tree: dict[Symbol, list[Symbol]], from_: Symbol, to_: Symbol):
-    tree[from_] += (
-        [to_] if to_ not in tree[from_] and not is_end_def_symbol(from_) else []
-    )
-
-
-def bfs(symbol_graph: SymbolGraph, start: list[Symbol]) -> list[Symbol]:
-    visited = []
-
-    queue: Deque[Symbol] = deque()
-    queue.extend(start)
-
-    while queue:
-        vertex = queue.popleft()
-        if vertex not in visited:
-            visited.append(vertex)
-            queue.extend(symbol_graph.tree[vertex])
-
-    return visited
-
-
-class LTContext:
-    def __init__(self, **env):
-        self.env = env
-
-    def __enter__(self):
-        self.original = {key: os.getenv(key) for key in self.env}
-        os.environ.update(self.env)
-
-    def __exit__(self, *args):
-        for k, v in self.original.items():
-            if v is None:
-                os.environ.pop(k, None)
-            else:
-                os.environ[k] = v
+def peek(input: list[str], index: int, offset: int) -> str:
+    return input[index + offset] if 0 <= index + offset < len(input) else str()
 
 
 class TrailContext:
@@ -79,61 +46,37 @@ class TrailContext:
                 os.environ[k] = v
 
 
-"""
-    Helper functions for tests.
-"""
+def contains_special_characters(input: str):
+    return any(character in "[@!#$%^&*()<>?/\\|}~:" for character in input)
 
 
-def get_ordered_symbols_from_symbol_graph(
-    symbol_graph: SymbolGraph,
-) -> dict[str, Symbol]:
-    symbols: dict[str, Symbol] = {}
+def bfs(graph: "SymbolGraph", start: list["Symbol"]) -> list["Symbol"]:
+    visited = []
 
-    start = symbol_graph.initials
-    visited = bfs(symbol_graph.copy(), start)
+    queue: Deque["Symbol"] = deque()
+    queue.extend(start)
 
-    # The default int is set to 0.
-    order: dict[str, int] = defaultdict(int)
-    for symbol in visited:
-        content = (
-            f'"{symbol.content}"'
-            if symbol.kind == Symbol_Kind.TERMINAL
-            else symbol.content
-        )
-        symbols[content + f"|{order[content]}"] = symbol
-        order[content] += 1
+    while queue:
+        vertex = queue.popleft()
+        if vertex not in visited:
+            visited.append(vertex)
+            queue.extend(graph.tree[vertex])
 
-    return symbols
+    return visited
 
 
-def extract_backreference_indices(symbols: list[str]) -> list[int]:
-    def get_regex_reference_indices(regex: str):
-        indices = []
-        i = 0
+def format_error(header: str, context: str, source: str) -> str:
+    RED = "\x1b[31m"
+    BLUE = "\x1b[34m"
+    YELLOW = "\x1b[33m"
+    BOLD = "\x1b[1m"
+    RESET = "\x1b[0m"
 
-        while i < len(regex):
-            if (
-                i + 1 < len(regex)
-                and regex[i] == "\\"
-                and not is_escaped(regex, i - 1)
-                and regex[i + 1].isdigit()
-            ):
-                i += 1
-                start = i
+    markers = ("." * len(context), "^" * len(source))
 
-                while regex[i].isdigit():
-                    i += 1
-
-                indices.append(int(regex[start:i]))
-
-            i += 1
-
-        return indices
-
-    return list(
-        chain.from_iterable(
-            get_regex_reference_indices(symbol)
-            for symbol in symbols
-            if symbol.startswith("/") and symbol.endswith("/")
-        )
+    return (
+        f"{BOLD}{RED}error{RESET}: {header}\n"
+        f"{BOLD}{BLUE}  |{RESET}\n"
+        f"{BOLD}{BLUE}  |{RESET} {context}{source}\n"
+        f"{BOLD}{BLUE}  |{RESET} {BOLD}{YELLOW}{markers[0]}{BOLD}{RED}{markers[1]}{RESET}"
     )
