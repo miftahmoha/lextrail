@@ -208,6 +208,12 @@ class TrailLayer:
     graph: "SymbolGraph"
     node: Optional["Symbol"]
 
+    def serialize(self):
+        return {
+            "graph": self.graph.serialize(),
+            "state": self.node.serialize() if self.node else "",
+        }
+
 
 @dataclass
 class TrailFrame:
@@ -283,6 +289,13 @@ def trail_run(trail: Trail):
     schema, state = trail.schema, trail.state
     proposals, backrefs = state.proposals, state.backrefs
 
+    # === Backreferences ===
+    for proposal in proposals:
+        node, value = proposal.frame[-1].node, proposal.value
+
+        for tag in node.tags:
+            backrefs[tag] += value
+
     frames = (
         [proposal.frame for proposal in proposals]
         if proposals
@@ -295,11 +308,6 @@ def trail_run(trail: Trail):
         frame = frames.pop()
         checkpoint = frame[-1]
         graph, node = (checkpoint.graph, checkpoint.node)
-
-        # === Backreferences ===
-        if node is not None and node.kind == SymbolKind.TERMINAL:
-            for tag in node.tags:
-                backrefs[tag] += node.content
 
         successors = graph.tree[node] if node else graph.head
 
