@@ -26,14 +26,14 @@ KEYWORDS = [
 
 class ErrorKind(Enum):
     INPUT = 0
-    BLOCK = 1
-    ARRAY = 2
-    ENTRY = 3
-    STRING = 4
-    KEYWORD = 5
-    TYPE = 6
-    NUMBER = 7
-    INTEGER = 8
+    KEYWORD = 1
+    BLOCK = 2
+    ARRAY = 3
+    ENTRY = 4
+    STRING = 5
+    NUMBER = 6
+    INTEGER = 7
+    TYPE = 8
 
 
 @dataclass
@@ -44,19 +44,43 @@ class JSONError:
         match self.kind:
             case ErrorKind.INPUT:
                 return "Invalid JSON Input."
+            case ErrorKind.KEYWORD:
+                return "Invalid JSON Keyword."
             case ErrorKind.BLOCK:
                 return "Invalid JSON Block."
             case ErrorKind.ARRAY:
                 return "Invalid JSON Array."
+            case ErrorKind.ENTRY:
+                return "Invalid JSON Entry."
             case ErrorKind.STRING:
                 return "Invalid JSON String."
+            case ErrorKind.NUMBER:
+                return "Invalid JSON Number."
+            case ErrorKind.INTEGER:
+                return "Invalid JSON Integer."
+            case ErrorKind.TYPE:
+                return "Invalid JSON Type."
 
     def help(self):
         match self.kind:
+            case ErrorKind.INPUT:
+                return 'Expected format: value ({}, [], "string", number) or "key" : value pair.'
+            case ErrorKind.KEYWORD:
+                return "Valid keywords include: type, const, enum, properties, items, required, etc."
             case ErrorKind.BLOCK:
                 return 'Expected format: {value}, where value is {object}, [array], "string", or number.'
             case ErrorKind.ARRAY:
                 return 'Expected format: [value], where value is {object}, [array], "string", or number.'
+            case ErrorKind.ENTRY:
+                return 'Expected format: "key" : value, where value is {object}, [array], "string", or number.'
+            case ErrorKind.STRING:
+                return 'Expected format: "name". Inner quotes must be escaped - use \\" instead of ".'
+            case ErrorKind.NUMBER:
+                return "Expected a `float` number."
+            case ErrorKind.INTEGER:
+                return "Expected an `integer` number."
+            case ErrorKind.TYPE:
+                return "Valid types include: object, array, number, string, ect."
 
 
 # ============================ INPUT ============================
@@ -188,7 +212,7 @@ def build_specs_from_input(inp: JSONInput) -> JSONSpecs:
     return specs
 
 
-# ============================ ENTITIES ============================
+# ============================ ENTITY ============================
 
 
 type JSONEntity = Union[JSONObject, JSONIterable, JSONLiteral]
@@ -430,7 +454,11 @@ def build_number_from_specs(specs: JSONSpecs) -> JSONLiteral:
 
         if (
             invalid := next(
-                (inp for inp in inps not in [InputKind.NUMBER, InputKind.INTEGER]),
+                (
+                    inp
+                    for inp in inps
+                    if inp.kind not in [InputKind.NUMBER, InputKind.INTEGER]
+                ),
                 None,
             )
         ) is not None:
@@ -440,7 +468,7 @@ def build_number_from_specs(specs: JSONSpecs) -> JSONLiteral:
 
         return JSONLiteral(value="|".join(f'"{inp.context.content}"' for inp in inps))
 
-    return JSONLiteral(value="/^-?(\\d+\\.\\d+|\\d+|\\.\\d+)$/")
+    return JSONLiteral(value="/^[0-9]\.[0-9]$/")
 
 
 def build_integer_from_specs(specs: JSONSpecs) -> JSONLiteral:
@@ -633,25 +661,6 @@ def build_json_input(content: str, line: int, path: str) -> JSONInput:
     return JSONInput(kind=kind, context=context)
 
 
-# def get_json_kind(context: InputContext) -> InputKind:
-#     content = context.content
-
-#     if is_valid_block(content):
-#         return InputKind.BLOCK
-#     elif is_valid_array(content):
-#         return InputKind.ARRAY
-#     elif is_valid_entry(content):
-#         return InputKind.ENTRY
-#     elif is_valid_string(content):
-#         return InputKind.STRING
-#     elif is_valid_string(content):
-#         return InputKind.INTEGER
-#     elif is_valid_number(content):
-#         return InputKind.NUMBER
-#     else:
-#         raise TrailError(format_json_error(JSONError(ErrorKind.INPUT), context))
-
-
 def build_json_label(content: str, line: int, path: str) -> JSONLabel:
     kind, context = (
         LabelKind.KEYWORD if content in KEYWORDS else LabelKind.PROPERTY
@@ -723,7 +732,7 @@ def format_json_error(error: JSONError, context: InputContext):
     )
 
 
-def pretty_json_print(schema: str) -> str:
+def format_json_instance(schema: str) -> str:
     result: list[str] = []
     depth = 0
     in_quote = False
@@ -731,8 +740,6 @@ def pretty_json_print(schema: str) -> str:
 
     while i < len(schema):
         curr = schema[i]
-
-        assert curr not in " \n\t\r", "There should be no whitespace characters."
 
         if curr == '"':
             if not is_escaped(schema, i):
