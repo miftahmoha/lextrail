@@ -477,7 +477,7 @@ def re_split(regex: str) -> list[str]:
         case MarkerKind.CLASS:
             raise TrailError(
                 format_error(
-                    "Unmatched '[' - expected a closing ')'.",
+                    "Unmatched '[' - expected a closing ']'.",
                     regex[: marker.index],
                     "[",
                 )

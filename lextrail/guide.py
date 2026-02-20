@@ -24,11 +24,11 @@ from lextrail.helpers import (
 )
 
 
-def split_cfg_into_lines(grammar: str) -> list[str]:
-    rules: list[str] = []
+def split_cfg_into_rows(grammar: str) -> list[str]:
+    rows: list[str] = []
     in_quote = False
     in_slash = False
-    rule: list[str] = []
+    row: list[str] = []
     i = 0
 
     while i < len(grammar):
@@ -45,16 +45,16 @@ def split_cfg_into_lines(grammar: str) -> list[str]:
             elif in_slash and not is_escaped(grammar, i):
                 in_slash = False
         elif curr == "\n" and not in_quote and not in_slash:
-            consume_lexeme(rules, rule)
+            consume_lexeme(rows, row)
             i += 1
             continue
 
-        rule.append(curr)
+        row.append(curr)
         i += 1
 
-    consume_lexeme(rules, rule)
+    consume_lexeme(rows, row)
 
-    return rules
+    return rows
 
 
 def split_production(production: str) -> tuple[str, str]:
@@ -105,45 +105,47 @@ def divide_cfg_into_productions(grammar: str) -> dict[str, str]:
     cfg: dict[str, str] = {}
     current = ""
 
-    lines = split_cfg_into_lines(grammar)
+    rows = split_cfg_into_rows(grammar)
 
-    for line in lines:
+    for row in rows:
 
-        if line.isspace():
+        if row.isspace():
             continue
 
-        head, body = split_production(line)
+        heads, body = split_production(row)
 
-        if not head and not body:
+        if not heads and not body:
             if not current:
-                raise TrailError(format_error("Invalid production.", "", line))
+                raise TrailError(format_error("Invalid production.", "", row))
 
-            cfg[current] += line
+            cfg[current] += row
         else:
-            if contains_special_characters(head):
+            if contains_special_characters(heads):
                 raise TrailError(
                     format_error(
-                        f"Name `{head}` contains special characters.", "", line.strip()
+                        f"Name `{heads}` contains special characters.", "", row.strip()
                     )
                 )
 
-            if head in cfg.keys():
+            if heads in cfg.keys():
                 raise TrailError(
-                    format_error(f"Duplicate production.", "", line.strip())
+                    format_error(f"Duplicate production.", "", row.strip())
                 )
 
-            cfg[head] = body
-            current = head
+            cfg[heads] = body
+            current = heads
 
     if "start" not in cfg.keys():
-        raise TrailError("`start` production rule has not been defined.")
+        raise TrailError(
+            format_error("`start` production rule has not been defined.", "", "")
+        )
 
     return cfg
 
 
 def is_escapable_from_infinite_loop(graph: "SymbolGraph", prospect: str) -> bool:
     visited = []
-    queue: Deque[Symbol] = deque(graph.head)
+    queue: Deque[Symbol] = deque(graph.heads)
 
     while queue:
         vertex = queue.popleft()
@@ -167,27 +169,27 @@ def is_escapable_from_infinite_loop(graph: "SymbolGraph", prospect: str) -> bool
 
         if vertex not in visited:
             visited.append(vertex)
-            queue.extend(graph.tree[vertex])
+            queue.extend(graph.edges[vertex])
 
     return False
 
 
-def contains_infinite_loop(graph: "SymbolGraph", head: str, body: str) -> bool:
-    is_loop = head in split_definition_into_lexemes(body)
+def contains_infinite_loop(graph: "SymbolGraph", heads: str, body: str) -> bool:
+    is_loop = heads in split_definition_into_lexemes(body)
 
     if is_loop:
         warnings.warn(
-            f"A potential loop of non-terminal symbols exists in {head}: {body}."
+            f"A potential loop of non-terminal symbols exists in {heads}: {body}."
         )
 
-        if not is_escapable_from_infinite_loop(graph, head):
+        if not is_escapable_from_infinite_loop(graph, heads):
             return True
 
     return False
 
 
-def contains_excluded_vars(graph: "SymbolGraph", heads: list[str]) -> bool:
-    excluded = next(
+def contains_undefined_vars(graph: "SymbolGraph", heads: list[str]) -> Optional[str]:
+    return next(
         (
             symbol.content
             for symbol in graph.symbols
@@ -195,12 +197,6 @@ def contains_excluded_vars(graph: "SymbolGraph", heads: list[str]) -> bool:
         ),
         None,
     )
-
-    if excluded:
-        print(f"{excluded} was not defined in the CFG.", file=sys.stderr)
-        return True
-    else:
-        return False
 
 
 @dataclass
@@ -260,12 +256,20 @@ def build_cfg_graph(grammar: str) -> CFGGraph:
 
         if contains_infinite_loop(graph, head, body):
             raise TrailError(
-                format_error("Production has an infinite loop.", head, body)
+                format_error(
+                    "Production has an infinite loop.",
+                    f"{head}: ",
+                    body,
+                )
             )
 
-        if contains_excluded_vars(graph, productions.keys()):
+        if undefined := contains_undefined_vars(graph, productions.keys()):
             raise TrailError(
-                format_error("Production has an undefined variable.", head, body)
+                format_error(
+                    f"Production has an undefined variable `{undefined}`.",
+                    f"{head}: ",
+                    body,
+                )
             )
 
         graphs[head] = graph
@@ -309,7 +313,7 @@ def trail_run(trail: Trail):
         checkpoint = frame[-1]
         graph, node = (checkpoint.graph, checkpoint.node)
 
-        successors = graph.tree[node] if node else graph.head
+        successors = graph.edges[node] if node else graph.heads
 
         if not successors:
             frame.pop()
@@ -333,11 +337,9 @@ def trail_run(trail: Trail):
                 next_frame[-1].node = successor
                 next_value = successor.content
 
-                # Reaching a `VARIABLE` means adding a layer to the stack.
                 next_layer = TrailLayer(graph=schema[next_value], node=None)
                 next_frame.append(next_layer)
 
-                # Push it to be processed.
                 frames.append(next_frame)
             elif successor.kind == SymbolKind.REFERENCE:
                 next_frame = [copy(layer) for layer in frame]

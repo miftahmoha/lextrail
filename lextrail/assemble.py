@@ -20,12 +20,12 @@ class ASMNode:
 
 @dataclass
 class ASMGraph:
-    head: list[ASMNode]
-    tree: dict[ASMNode, set[ASMNode]]
-    tail: list[ASMNode]
+    heads: list[ASMNode]
+    edges: dict[ASMNode, set[ASMNode]]
+    tails: list[ASMNode]
 
     def new() -> "ASMGraph":
-        return ASMGraph(head=[], tree=defaultdict(list), tail=[])
+        return ASMGraph(heads=[], edges=defaultdict(list), tails=[])
 
 
 @dataclass
@@ -106,7 +106,7 @@ def build_asm_graph(alphabet: list[str]):
 
     for token in tokens:
         for i, byte in enumerate(token):
-            candidates = graph.head if i == 0 else graph.tree[node] if node else []
+            candidates = graph.heads if i == 0 else graph.edges[node] if node else []
             found = next((node for node in candidates if node.value == byte), None)
 
             if found:
@@ -116,8 +116,8 @@ def build_asm_graph(alphabet: list[str]):
                 candidates.append(new_node)
                 node = new_node
 
-        if node not in graph.tail:
-            graph.tail.append(node)
+        if node not in graph.tails:
+            graph.tails.append(node)
 
     return graph
 
@@ -129,13 +129,31 @@ def asm_cfg(cfg: str, alphabet: list[str]) -> ASM:
     )
 
 
+def asm_exp(exp: str, alphabet: list[str]) -> ASM:
+    return ASM(
+        schema=ASMSchema(
+            cfg=build_cfg_graph(f"start: {exp}"), asm=build_asm_graph(alphabet)
+        ),
+        state=ASMState.new(),
+    )
+
+
+def asm_rex(rex: str, alphabet: list[str]) -> ASM:
+    return ASM(
+        schema=ASMSchema(
+            cfg=build_cfg_graph(f"start: /{rex}/"), asm=build_asm_graph(alphabet)
+        ),
+        state=ASMState.new(),
+    )
+
+
 def assemble(graph: ASMGraph, frame: ASMFrame) -> list[ASMProposal]:
     proposals: list[ASMProposal] = []
 
     token, step = frame.token, frame.step
     bytes, node = token.value, step.node
 
-    successors = graph.tree[node] if node else graph.head
+    successors = graph.edges[node] if node else graph.heads
 
     while bytes:
         found = next(
@@ -149,7 +167,7 @@ def assemble(graph: ASMGraph, frame: ASMFrame) -> list[ASMProposal]:
             step.node = found
             step.accumulator.append(byte)
 
-            if found in graph.tail:
+            if found in graph.tails:
                 final_layers = [copy(layer) for layer in frame.layers]
 
                 # Reset the step for the next run.
@@ -168,7 +186,7 @@ def assemble(graph: ASMGraph, frame: ASMFrame) -> list[ASMProposal]:
                     )
                 )
 
-            successors = graph.tree[found]
+            successors = graph.edges[found]
         else:
             break
 
@@ -200,9 +218,9 @@ def asm_run(asm_s: ASM):
         graph, node = checkpoint.graph, checkpoint.node
 
         if node:
-            successors = graph.tree[node] if frame.token.end() else [node]
+            successors = graph.edges[node] if frame.token.end() else [node]
         else:
-            successors = graph.head
+            successors = graph.heads
 
         if not successors:
             frame.layers.pop()

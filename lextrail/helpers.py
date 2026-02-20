@@ -60,7 +60,7 @@ def bfs(graph: "SymbolGraph", start: list["Symbol"]) -> list["Symbol"]:
         vertex = queue.popleft()
         if vertex not in visited:
             visited.append(vertex)
-            queue.extend(graph.tree[vertex])
+            queue.extend(graph.edges[vertex])
 
     return visited
 
