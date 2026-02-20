@@ -201,7 +201,7 @@ def test_cfg_PRSL08():
     assert lark.parse(response)
 
 
-def test_cfg_loop_01():
+def test_cfg_warning_01():
     example = r"""
     start: expression
 
@@ -222,7 +222,7 @@ def test_cfg_loop_01():
         )
 
 
-def test_cfg_loop_02():
+def test_cfg_warning_02():
     example = r"""
     start: expression
 
@@ -243,7 +243,7 @@ def test_cfg_loop_02():
         )
 
 
-def test_cfg_loop_03():
+def test_cfg_warning_03():
     example = r"""
     start: expression
 
@@ -264,7 +264,7 @@ def test_cfg_loop_03():
         )
 
 
-def test_cfg_loop_04():
+def test_cfg_warning_04():
     example = r"""
     start: expression
 
@@ -285,7 +285,7 @@ def test_cfg_loop_04():
         )
 
 
-def test_cfg_loop_05():
+def test_cfg_warning_05():
     example = r"""
     start: expression
 
@@ -306,7 +306,7 @@ def test_cfg_loop_05():
         )
 
 
-def test_cfg_loop_06():
+def test_cfg_loop():
     example = r"""
     start: expression
 
@@ -324,6 +324,27 @@ def test_cfg_loop_06():
 
     assert str(exc_info.value) == format_error(
         "Production has an infinite loop.",
-        "expression",
+        "expression: ",
         'term expression (("+" | "-") term)',
+    )
+
+
+def test_cfg_undefined():
+    example = r"""
+    start: expression
+
+    expression: term (("+" | "-") term)
+
+    term: factor (("*" | "/") factor)
+
+    factor: NUMBER
+    """
+
+    with pytest.raises(TrailError) as exc_info:
+        trail_cfg(example)
+
+    assert str(exc_info.value) == format_error(
+        "Production has an undefined variable `NUMBER`.",
+        "factor: ",
+        "NUMBER",
     )
