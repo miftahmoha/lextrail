@@ -1,13 +1,12 @@
 from dataclasses import dataclass
 from enum import Enum
-from uuid import uuid4
 from typing import Union
+from uuid import uuid4
 
+from lextrail.assemble import ASM, ASMSchema, ASMState, build_asm_graph
 from lextrail.build import SymbolGraph, build_symbol_graph
 from lextrail.guide import Trail, TrailState
-from lextrail.assemble import ASMSchema, ASM, ASMState, build_asm_graph
 from lextrail.helpers import TrailError, is_escaped
-
 
 KEYWORDS = [
     "type",
@@ -170,7 +169,7 @@ def build_entry_from_input(inp: JSONInput) -> tuple[JSONLabel, JSONInput]:
     assert kind == InputKind.ENTRY, f"Expected `Entry`, got `{kind}` instead."
 
     line, path = context.line, context.path
-    key, value = [item.strip() for item in context.content.split(":", maxsplit=1)]
+    key, value = (item.strip() for item in context.content.split(":", maxsplit=1))
 
     if is_valid_string(key):
         label = build_json_label(key[1:-1], line, path)
@@ -187,7 +186,7 @@ def build_specs_from_input(inp: JSONInput) -> JSONSpecs:
     specs: JSONSpecs = {}
 
     if inp.kind != InputKind.BLOCK:
-        return TrailError(
+        raise TrailError(
             format_json_error(JSONError(kind=ErrorKind.BLOCK), context=inp.context)
         )
 
@@ -195,7 +194,7 @@ def build_specs_from_input(inp: JSONInput) -> JSONSpecs:
 
     for entry in entries:
         if entry.kind != InputKind.ENTRY:
-            return TrailError(
+            raise TrailError(
                 format_json_error(JSONError(kind=ErrorKind.ENTRY), context=inp.context)
             )
 
@@ -203,8 +202,10 @@ def build_specs_from_input(inp: JSONInput) -> JSONSpecs:
         context = label.context
 
         if label.kind != LabelKind.KEYWORD:
-            return TrailError(
-                format_json_error(kind=ErrorKind.KEYWORD, context=inp.context)
+            raise TrailError(
+                format_json_error(
+                    JSONError(kind=ErrorKind.KEYWORD), context=inp.context
+                )
             )
 
         specs[context.content] = inp
@@ -256,8 +257,8 @@ class JSONLiteral:
 def build_entity_from_input(inp: JSONInput) -> JSONEntity:
     specs = build_specs_from_input(inp)
 
-    if (inp := specs.get("type")) is not None:
-        kind, context = inp.kind, inp.context
+    if (inp_ := specs.get("type")) is not None:
+        kind, context = inp_.kind, inp_.context
 
         if kind != InputKind.STRING:
             raise TrailError(
@@ -266,13 +267,13 @@ def build_entity_from_input(inp: JSONInput) -> JSONEntity:
 
         return build_json_entity(context, specs)
 
-    if (inp := specs.get("oneOf")) is not None:
-        if inp.kind != InputKind.ARRAY:
+    if (inp_ := specs.get("oneOf")) is not None:
+        if inp_.kind != InputKind.ARRAY:
             raise TrailError(
-                format_json_error(JSONError(kind=ErrorKind.ARRAY), inp.context)
+                format_json_error(JSONError(kind=ErrorKind.ARRAY), inp_.context)
             )
 
-        inps = split_json_input(inp)
+        inps = split_json_input(inp_)
 
         if (
             invalid := next((inp for inp in inps if inp.kind != InputKind.BLOCK), None)
@@ -370,7 +371,7 @@ def build_array_from_specs(specs: JSONSpecs) -> JSONIterable:
     if (inp := specs.get("items")) is not None:
         if inp.kind != InputKind.BLOCK:
             raise TrailError(
-                format_json_error(JSONError(kind=ErrorKind.BLOCK), block.context)
+                format_json_error(JSONError(kind=ErrorKind.BLOCK), inp.context)
             )
 
         entity = build_entity_from_input(inp)
@@ -468,7 +469,7 @@ def build_number_from_specs(specs: JSONSpecs) -> JSONLiteral:
 
         return JSONLiteral(value="|".join(f'"{inp.context.content}"' for inp in inps))
 
-    return JSONLiteral(value="/^[0-9]\.[0-9]$/")
+    return JSONLiteral(value="/^[0-9]\\.[0-9]$/")
 
 
 def build_integer_from_specs(specs: JSONSpecs) -> JSONLiteral:
@@ -490,7 +491,7 @@ def build_integer_from_specs(specs: JSONSpecs) -> JSONLiteral:
 
         if (
             invalid := next(
-                (inp for inp in inps != InputKind.INTEGER),
+                (inp for inp in inps if inp.kind != InputKind.INTEGER),
                 None,
             )
         ) is not None:
@@ -518,9 +519,9 @@ def build_cfg_from_entity(entity: JSONEntity) -> CFGGraph:
 
         match item.entity:
             case JSONObject(properties):
-                production = ['"{"']
+                production = [' "{" ']
 
-                unions = []
+                unions: list[list[str]] = []
                 anchor = False
 
                 for property in properties:
@@ -532,10 +533,12 @@ def build_cfg_from_entity(entity: JSONEntity) -> CFGGraph:
                     if property.required:
                         if not unions:
                             unions.append([f'( "\\"{property.label}\\":" {block.id} )'])
+
                         anchor = True
                     else:
                         for union in unions:
                             union.append("?")
+
                         if not anchor:
                             unions.append([f'( "\\"{property.label}\\":" {block.id} )'])
 
@@ -550,15 +553,13 @@ def build_cfg_from_entity(entity: JSONEntity) -> CFGGraph:
                 cfg[item.id] = build_symbol_graph("".join(production))
 
             case JSONIterable(kind, blocks):
-                production: list[str] = []
-
                 match kind:
                     case IterableKind.ARRAY:
                         assert (
                             len(blocks) == 1
                         ), "Arrays must consist of exactly one block."
 
-                        production.append(' "[" ')
+                        production = [' "[" ']
 
                         if blocks:
                             production.append(
@@ -569,7 +570,7 @@ def build_cfg_from_entity(entity: JSONEntity) -> CFGGraph:
                         production.append(' "]" ')
 
                     case IterableKind.TUPLE:
-                        production.append(' "[" ')
+                        production = [' "[" ']
 
                         for block in blocks[:-1]:
                             production.append(f' {block.id} "," ')
@@ -582,7 +583,7 @@ def build_cfg_from_entity(entity: JSONEntity) -> CFGGraph:
                         production.append(' "]" ')
 
                     case IterableKind.UNION:
-                        production.append("(")
+                        production = ["("]
 
                         for block in blocks[:-1]:
                             production.append(f" {block.id} | ")

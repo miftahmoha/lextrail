@@ -1,11 +1,11 @@
 from collections import defaultdict, deque
 from copy import copy
 from dataclasses import dataclass, field
-from uuid import UUID, uuid4
 from typing import Deque, Optional
+from uuid import UUID, uuid4
 
 from lextrail.build import SymbolKind
-from lextrail.guide import CFGGraph, TrailLayer, TrailFrame, build_cfg_graph
+from lextrail.guide import CFGGraph, TrailFrame, TrailLayer, TrailRefs, build_cfg_graph
 from lextrail.helpers import TrailError
 
 
@@ -20,12 +20,13 @@ class ASMNode:
 
 @dataclass
 class ASMGraph:
-    heads: list[ASMNode]
+    heads: set[ASMNode]
     edges: dict[ASMNode, set[ASMNode]]
-    tails: list[ASMNode]
+    tails: set[ASMNode]
 
-    def new() -> "ASMGraph":
-        return ASMGraph(heads=[], edges=defaultdict(list), tails=[])
+    @classmethod
+    def new(cls) -> "ASMGraph":
+        return ASMGraph(heads=set(), edges=defaultdict(set), tails=set())
 
 
 @dataclass
@@ -61,7 +62,7 @@ class ASMFrame:
     token: ASMToken
 
     @classmethod
-    def new(cls, cfg: str) -> "ASMFrame":
+    def new(cls, cfg: CFGGraph) -> "ASMFrame":
         return ASMFrame(
             layers=TrailFrame.new(cfg), step=ASMStep.new(), token=ASMToken.new()
         )
@@ -73,17 +74,14 @@ class ASMProposal:
     value: str
 
 
-type ASMRefs = dict[str, list[int]]
-
-
 @dataclass
 class ASMState:
     proposals: list[ASMProposal]
-    backrefs: ASMRefs
+    backrefs: TrailRefs
 
     @classmethod
     def new(cls) -> "ASMState":
-        return ASMState(proposals=[], backrefs=defaultdict(list))
+        return ASMState(proposals=[], backrefs=defaultdict(str))
 
 
 @dataclass
@@ -99,25 +97,25 @@ class ASM:
 
 
 def build_asm_graph(alphabet: list[str]):
-    graph: ASMNode = ASMGraph.new()
+    graph: ASMGraph = ASMGraph.new()
     node: Optional[ASMNode] = None
 
     tokens = [symbol.encode("utf-8") for symbol in alphabet]
 
     for token in tokens:
         for i, byte in enumerate(token):
-            candidates = graph.heads if i == 0 else graph.edges[node] if node else []
+            candidates = graph.heads if i == 0 else graph.edges[node] if node else set()
             found = next((node for node in candidates if node.value == byte), None)
 
             if found:
                 node = found
             else:
                 new_node = ASMNode(byte)
-                candidates.append(new_node)
+                candidates.add(new_node)
                 node = new_node
 
-        if node not in graph.tails:
-            graph.tails.append(node)
+        if node and node not in graph.tails:
+            graph.tails.add(node)
 
     return graph
 
@@ -193,18 +191,18 @@ def assemble(graph: ASMGraph, frame: ASMFrame) -> list[ASMProposal]:
     return proposals
 
 
-def asm_run(asm_s: ASM):
-    schema, state = asm_s.schema, asm_s.state
+def asm_run(core: ASM):
+    schema, state = core.schema, core.state
 
     cfg, asm = schema.cfg, schema.asm
     proposals, backrefs = state.proposals, state.backrefs
 
-    # === Backreferences ===
     for proposal in proposals:
         node, value = proposal.frame.layers[-1].node, proposal.value
 
-        for tag in node.tags:
-            backrefs[tag] += value
+        if node and (tags := node.tags):
+            for tag in tags:
+                backrefs[tag] += value
 
     frames = (
         [proposal.frame for proposal in proposals] if proposals else [ASMFrame.new(cfg)]
@@ -277,9 +275,9 @@ def asm_run(asm_s: ASM):
                 next_step, next_token = (
                     ASMStep(accumulator=step.accumulator[:], node=step.node),
                     (
-                        ASMToken(value=backrefs[successor.content])
+                        ASMToken.from_str(backrefs[successor.content])
                         if token.end()
-                        else ASMToken(value=token.value[:])
+                        else ASMToken(value=deque(token.value))
                     ),
                 )
 

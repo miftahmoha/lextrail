@@ -1,9 +1,9 @@
-from dataclasses import dataclass
-from enum import Enum
 import os
 import string
+from dataclasses import dataclass
+from enum import Enum
 
-from lextrail.helpers import TrailError, consume_lexeme, peek, is_escaped, format_error
+from lextrail.helpers import TrailError, consume_lexeme, format_error, is_escaped, peek
 
 
 class MarkerKind(Enum):
@@ -62,7 +62,7 @@ def re_split(regex: str) -> list[str]:
                 next = peek(regex, i, 1)
 
                 if next == "]":
-                    accumulate.append(str())
+                    accumulate.append("")
                 else:
                     consume_lexeme(lexemes, accumulate)
                     lexemes.append(curr)
@@ -106,11 +106,11 @@ def re_split(regex: str) -> list[str]:
                             f"{prev}{{",
                         )
                     )
-                elif prev == str():
+                elif prev == "":
                     raise TrailError(
                         format_error(
                             "Interval quantifiers must be precedented by either an expression or a group.",
-                            str(),
+                            "",
                             regex[:i],
                         )
                     )
@@ -140,8 +140,8 @@ def re_split(regex: str) -> list[str]:
                         len(lexemes) >= 2
                     ), "`is_intv_quant` ensures the existence of `{` and `{}` raises an error early."
 
-                    bracket, quantifier = lexemes[-2], lexemes[-1]
-                    parts = [part.strip() for part in quantifier.split(",")]
+                    bracket, content = lexemes[-2], lexemes[-1]
+                    parts = [part.strip() for part in content.split(",")]
 
                     if (
                         bracket == "{"
@@ -156,8 +156,8 @@ def re_split(regex: str) -> list[str]:
                             raise TrailError(
                                 format_error(
                                     "Interval quantifier bounds out of order.",
-                                    regex[: i - len(quantifier) - 1],
-                                    f"{{{quantifier}}}",
+                                    regex[: i - len(content) - 1],
+                                    f"{{{content}}}",
                                 )
                             )
 
@@ -166,8 +166,8 @@ def re_split(regex: str) -> list[str]:
                         raise TrailError(
                             format_error(
                                 "Invalid interval quantifier.",
-                                regex[: i - len(quantifier) - len(bracket)],
-                                f"{bracket}{quantifier}}}",
+                                regex[: i - len(content) - len(bracket)],
+                                f"{bracket}{content}}}",
                             )
                         )
 
@@ -235,11 +235,11 @@ def re_split(regex: str) -> list[str]:
             else:
                 prev, next = peek(regex, i, -1), peek(regex, i, 1)
 
-                if prev == str():
+                if prev == "":
                     raise TrailError(
                         format_error(
                             "Quantifiers must be precedented by either an expression or a group.",
-                            str(),
+                            "",
                             curr,
                         )
                     )
@@ -288,7 +288,7 @@ def re_split(regex: str) -> list[str]:
 
                     consume_lexeme(lexemes, accumulate)
                     continue
-                elif next == "|" or next == str():
+                elif next == "|" or next == "":
                     pass
                 else:
                     raise TrailError(
@@ -308,7 +308,7 @@ def re_split(regex: str) -> list[str]:
                 if is_char_class:
                     if prev == "[" and not is_escaped(regex, i - 1):
                         if next == "]":
-                            lexemes.append(str())
+                            lexemes.append("")
                         else:
                             assert not accumulate, "`accumulate` expected to be empty."
 
@@ -316,7 +316,7 @@ def re_split(regex: str) -> list[str]:
                     else:
                         accumulate.append(f"\\{curr}")
                 else:
-                    if prev == "|" or prev == str():
+                    if prev == "|" or prev == "":
                         pass
                     else:
                         raise TrailError(
@@ -396,11 +396,11 @@ def re_split(regex: str) -> list[str]:
             else:
                 prev = peek(regex, i, -1)
 
-                if prev == str():
+                if prev == "":
                     raise TrailError(
                         format_error(
                             "Quantifiers must be precedented by either an expression or a group.",
-                            str(),
+                            "",
                             curr,
                         )
                     )
@@ -522,9 +522,10 @@ def re_expand(chunks: list[str]):
     lexemes: list[str] = []
     is_char_class = False
     is_complement = False
+    length = len(chunks)
     i = 0
 
-    while i < len(chunks):
+    while i < length:
         chunk = chunks[i]
 
         if chunk == "[":
@@ -558,11 +559,12 @@ def re_expand(chunks: list[str]):
 
         # === CHARACTER RANGE ===
         elif chunk == "-":
-            low, up = lexemes.pop(), peek(chunks, i, 1)
+            assert lexemes and length > i + 1, "Range `-` must be between bounds"
+
+            low, up = lexemes.pop(), chunks[i + 1]
             lexemes.append(expand_ascii(low, up))
 
-            i += 2
-            continue
+            i += 1
 
         # === PREDEFINED CHARACTER CLASSES ===
         # [NOTE] PCCEs don't become literal inside brackets.
@@ -604,16 +606,17 @@ def re_norm(chunks: list[str]):
     }
 
     lexemes: list[str] = []
+    length = len(chunks)
     i = 0
 
-    while i < len(chunks):
+    while i < length:
         chunk = chunks[i]
 
         # === CHARACTER CLASSES ===
         if chunk == "[":
-            next, skip = peek(chunks, i, 1), peek(chunks, i, 2)
+            assert length > i + 2 and chunks[i + 2] == "]", "Invalid character class."
 
-            assert skip == "]", "Expected assembled character class."
+            next = chunks[i + 1]
 
             if int(os.getenv("TEST_MODE", 0)):
                 lexemes += [
@@ -662,17 +665,14 @@ def re_norm(chunks: list[str]):
 
         # === INTERVAL QUANTIFIERS ===
         elif chunk == "{":
-            assert (
-                lexemes
-            ), "Interval quantifiers must be precendented by either a expression or a group."
+            assert lexemes and length > i + 1, "Invalid interval quantifier."
 
-            prev, next = lexemes.pop(), peek(chunks, i, 1).split(",")
+            prev, span = lexemes.pop(), chunks[i + 1].split(",")
 
-            # [CHECK] Interval quantifier could either be `{x, y}`, `{x,}`, `{,y}` or `{x}`.
-            assert len(next) <= 2, "Interval quantifier has invalid arguments."
+            # Interval quantifier could either be `{x, y}`, `{x,}`, `{,y}` or `{x}`.
+            assert len(span) <= 2, "Interval quantifier has invalid arguments."
 
-            args = (next[0], next[1]) if len(next) == 2 else (next[0], next[0])
-
+            args = (span[0], span[1]) if len(span) == 2 else (span[0], span[0])
             req, max = (int(args[0]) if args[0] else 0), (
                 int(args[1]) if args[1] else 0
             )
@@ -716,7 +716,9 @@ def re_norm(chunks: list[str]):
             if chunk in ["(", ")", "|"] or is_named_reference(chunk):
                 lexemes.append(chunk)
             else:
-                curr, next = exclude_escapes(chunk), peek(chunks, i, 1)
+                curr, next = exclude_escapes(chunk), (
+                    chunks[i + 1] if length > i + 1 else "END"
+                )
 
                 if next in "{*?+":
                     lexemes += [f'"{curr[:-1]}"'] + [f'"{curr[-1]}"']
