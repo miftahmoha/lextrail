@@ -603,14 +603,14 @@ def build_cfg_from_entity(entity: JSONEntity) -> CFGGraph:
     return cfg
 
 
-def trail_schema(schema: str) -> Trail:
+def trail_json(schema: str) -> Trail:
     schema = build_json_input(schema.strip(), 0, "")
     entity = build_entity_from_input(schema)
 
     return Trail(schema=build_cfg_from_entity(entity), state=TrailState.new())
 
 
-def asm_schema(schema: str, alphabet: list[str]) -> ASM:
+def asm_json(schema: str, alphabet: list[str]) -> ASM:
     schema = build_json_input(schema.strip(), 0, "")
     entity = build_entity_from_input(schema)
 

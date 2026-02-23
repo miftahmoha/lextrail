@@ -68,7 +68,7 @@ def split_definition_into_lexemes(definition: str) -> list[str]:
             elif not is_escaped(i):
                 lexeme.append(curr)
 
-                result = re_parse(lexeme[1:-1])
+                result = re_parse("".join(lexeme[1:-1]))
                 lexeme.clear()
                 lexemes.extend(result)
 

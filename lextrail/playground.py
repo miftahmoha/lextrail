@@ -5,9 +5,8 @@ import time
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from typing import Any, Union
+from typing import Any
 
-from lextrail.assemble import ASM, asm_run
 from lextrail.guide import Trail, trail_run
 
 
@@ -30,9 +29,8 @@ class UI_Context:
     )
 
 
-def run_simulation(base: Union[Trail, ASM], ui: UI_Context):
+def run_simulation(core: Trail, ui: UI_Context):
     ui_state, ui_settings = ui.state, ui.settings
-    # proposals = []
 
     while True:
         if ui_settings["interrupted"]:
@@ -70,17 +68,11 @@ def run_simulation(base: Union[Trail, ASM], ui: UI_Context):
             ui_state, ui_settings = ui.state, ui.settings
             ui_settings["run"] = next_run
 
-            base.state.proposals = []
+            core.state.proposals = []
 
-        (
-            trail_run(base)
-            if isinstance(base, Trail)
-            else asm_run(base)
-            if isinstance(base, ASM)
-            else None
-        )
+        trail_run(core)
 
-        proposals = base.state.proposals
+        proposals = core.state.proposals
 
         if not proposals:
             print("Simulation is complete, no more states to process.")
@@ -100,17 +92,9 @@ def run_simulation(base: Union[Trail, ASM], ui: UI_Context):
         if proposals:
             ui_state["response"] += [proposals[-1].value]
 
-        base.state.proposals = proposals
+        core.state.proposals = proposals
 
-        frames = (
-            [proposal.frame for proposal in proposals]
-            if isinstance(base, Trail)
-            else (
-                [proposal.frame.layers for proposal in proposals]
-                if isinstance(base, ASM)
-                else None
-            )
-        )
+        frames = [proposal.frame for proposal in proposals]
 
         ui_state["results"].append(
             [[layer.serialize() for layer in frame] for frame in frames]
@@ -131,6 +115,8 @@ def run_playground(trail: Trail, port=8000):
 
 
 class Server(BaseHTTPRequestHandler):
+    ui: UI_Context
+
     @classmethod
     def initiate(cls, ui: UI_Context):
         cls.ui = ui

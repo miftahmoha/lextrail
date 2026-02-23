@@ -1,5 +1,4 @@
 import os
-
 from collections import deque
 from typing import TYPE_CHECKING, Deque
 
@@ -17,7 +16,7 @@ def consume_lexeme(lexemes: list[str], accumulate: list[str]):
         accumulate.clear()
 
 
-def is_escaped(input: list[str], index: int) -> bool:
+def is_escaped(input: str, index: int) -> bool:
     count = 0
     index -= 1
     while index >= 0 and input[index] == "\\":
@@ -26,8 +25,8 @@ def is_escaped(input: list[str], index: int) -> bool:
     return count % 2 == 1
 
 
-def peek(input: list[str], index: int, offset: int) -> str:
-    return input[index + offset] if 0 <= index + offset < len(input) else str()
+def peek(input: str, index: int, offset: int) -> str:
+    return input[index + offset] if 0 <= index + offset < len(input) else ""
 
 
 class TrailContext:

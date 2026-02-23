@@ -1,26 +1,24 @@
-from collections import defaultdict
+import warnings
+from collections import defaultdict, deque
+from collections.abc import KeysView
+from copy import copy
 from dataclasses import dataclass
 from typing import Deque, Optional
-from copy import copy
-from collections import deque
 
-import sys
-import warnings
-
-from lextrail.helpers import TrailError, format_error
 from lextrail.build import (
     Symbol,
     SymbolGraph,
     SymbolKind,
-    split_definition_into_lexemes,
     build_symbol_graph,
+    split_definition_into_lexemes,
 )
 from lextrail.helpers import (
-    consume_lexeme,
-    is_escaped,
-    contains_special_characters,
+    TrailError,
     bfs,
+    consume_lexeme,
+    contains_special_characters,
     format_error,
+    is_escaped,
 )
 
 
@@ -128,9 +126,7 @@ def divide_cfg_into_productions(grammar: str) -> dict[str, str]:
                 )
 
             if heads in cfg.keys():
-                raise TrailError(
-                    format_error(f"Duplicate production.", "", row.strip())
-                )
+                raise TrailError(format_error("Duplicate production.", "", row.strip()))
 
             cfg[heads] = body
             current = heads
@@ -188,7 +184,9 @@ def contains_infinite_loop(graph: "SymbolGraph", heads: str, body: str) -> bool:
     return False
 
 
-def contains_undefined_vars(graph: "SymbolGraph", heads: list[str]) -> Optional[str]:
+def contains_undefined_vars(
+    graph: "SymbolGraph", heads: KeysView[str]
+) -> Optional[str]:
     return next(
         (
             symbol.content
@@ -289,16 +287,16 @@ def trail_rex(exp: str):
     return Trail(schema=build_cfg_graph(f"start: /{exp}/"), state=TrailState.new())
 
 
-def trail_run(trail: Trail):
-    schema, state = trail.schema, trail.state
+def trail_run(core: Trail):
+    schema, state = core.schema, core.state
     proposals, backrefs = state.proposals, state.backrefs
 
-    # === Backreferences ===
     for proposal in proposals:
         node, value = proposal.frame[-1].node, proposal.value
 
-        for tag in node.tags:
-            backrefs[tag] += value
+        if node and (tags := node.tags):
+            for tag in tags:
+                backrefs[tag] += value
 
     frames = (
         [proposal.frame for proposal in proposals]

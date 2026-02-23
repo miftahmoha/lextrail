@@ -4,11 +4,11 @@ import json
 from jsonschema import validate, ValidationError
 
 from lextrail.guide import get_next_values
-from lextrail.json import trail_schema, format_json_instance
+from lextrail.json import trail_json
 
 
 def simulate_response(schema: str) -> str:
-    trail = trail_schema(schema)
+    trail = trail_json(schema)
     response, value = [], ""
 
     while values := get_next_values(trail, value):
