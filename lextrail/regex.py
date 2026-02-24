@@ -7,7 +7,7 @@ from lextrail.helpers import TrailError, consume_lexeme, format_error, is_escape
 
 
 class MarkerKind(Enum):
-    EMPTY = 0
+    UNSET = 0
     GROUP = 1
     INTERVAL = 2
     CLASS = 3
@@ -15,8 +15,12 @@ class MarkerKind(Enum):
 
 @dataclass
 class SplitMarker:
-    index: int = 0
-    kind: MarkerKind = MarkerKind.EMPTY
+    kind: MarkerKind
+    index: int
+
+    @classmethod
+    def new(cls):
+        return SplitMarker(kind=MarkerKind.UNSET, index=0)
 
 
 def re_split(regex: str) -> list[str]:
@@ -463,7 +467,7 @@ def re_split(regex: str) -> list[str]:
 
     consume_lexeme(lexemes, accumulate)
 
-    marker = markers.pop() if markers else SplitMarker()
+    marker = markers.pop() if markers else SplitMarker.new()
 
     match marker.kind:
         case MarkerKind.GROUP:
