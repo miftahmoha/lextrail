@@ -1,0 +1,23 @@
+[project]
+name = "lextrail"
+version = "0.1.0"
+description = "A Python library for constraining language model outputs to follow CFG, REGEX and JSON (experimental)."
+authors = [
+  {name = "Mohamed Achraf Miftah", email = "m.miftah.achraf@gmail.com"},
+]
+readme = "README.md"
+license = {file = "LICENSE"}
+requires-python ="~=3.10"
+
+[project.optional-dependencies]
+dev = ["lark", "jsonschema"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build]
+include = ["lextrail/*", "playground/*"]
+
+[project.urls]
+Homepage = "https://github.com/miftahmoha/lextrail"

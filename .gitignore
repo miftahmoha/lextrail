@@ -1,6 +1,4 @@
+.vscode/
 __pycache__/
-animation.py
-tests.py
-todo.txt
-reduce.py
-./render/gify.py
+junk/
+main.py
