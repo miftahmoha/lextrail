@@ -289,7 +289,6 @@ def build_entity_from_input(inp: JSONInput) -> JSONEntity:
 
         return JSONIterable(kind=IterableKind.UNION, blocks=blocks)
 
-    # [TODO] Unspecified block error?
     return JSONLiteral(value='"null"')
 
 
@@ -433,7 +432,7 @@ def build_string_from_specs(specs: JSONSpecs) -> JSONLiteral:
             value="|".join(f'"\\"{inp.context.content[1:-1]}\\""' for inp in inps)
         )
 
-    return JSONLiteral(value='/"\\w{5,10}"/')
+    return JSONLiteral(value='/"PLACEHOLDER"/')
 
 
 def build_number_from_specs(specs: JSONSpecs) -> JSONLiteral:
@@ -469,7 +468,7 @@ def build_number_from_specs(specs: JSONSpecs) -> JSONLiteral:
 
         return JSONLiteral(value="|".join(f'"{inp.context.content}"' for inp in inps))
 
-    return JSONLiteral(value="/^[0-9]\\.[0-9]$/")
+    return JSONLiteral(value="/[0-9]\\.[0-9]/")
 
 
 def build_integer_from_specs(specs: JSONSpecs) -> JSONLiteral:
@@ -501,7 +500,7 @@ def build_integer_from_specs(specs: JSONSpecs) -> JSONLiteral:
 
         return JSONLiteral(value="|".join(f'"{inp.context.content}"' for inp in inps))
 
-    return JSONLiteral(value="/^[0-9]$/")
+    return JSONLiteral(value="/[0-9]/")
 
 
 # ============================ CFG ============================
