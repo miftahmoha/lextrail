@@ -192,10 +192,10 @@ export async function addEventListeners(DOM: DOM, state: Ts_State, updateGraphs:
 		if (confirm('Are you sure you want to reset the simulation?')) {
 			sendControlCommand('reset');
 
-			// Increments a run state to avoid updates until Python sends the reset data.
-			state.response.setting.run += 1;
 			state.frame = 0;
-			state.fetch = true;
+
+			// Allows reset when incoming data matches last sent data.
+			state.response.data.completed = false;
 
 			DOM.display.status.innerHTML = "Loading graphs from server...";
 

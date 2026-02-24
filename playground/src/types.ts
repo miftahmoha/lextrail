@@ -72,7 +72,6 @@ export type Py_Setting = {
     "paused": boolean,
     "interrupted": boolean,
     "reset": boolean,
-    "run": number,
 }
 
 export type Py_Recieve = {

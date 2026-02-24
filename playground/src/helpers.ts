@@ -158,10 +158,3 @@ export function cloneContainer(sourceContainer: HTMLElement) {
 	updateElementIds(clonedContainer);
 	return clonedContainer;
 }
-
-export async function getRunIndex() {
-	const response = await fetch("/graph");
-	if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-
-	return (await response.json()).setting.run;
-}

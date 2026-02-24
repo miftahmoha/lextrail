@@ -1,5 +1,5 @@
 import { Py_Recieve, Ts_State } from './types';
-import { updateControlButtons, getRunIndex } from './helpers';
+import { updateControlButtons } from './helpers';
 import { updateFrame, updateGraphs } from './render';
 import { DOM, addEventListeners } from './interface';
 
@@ -13,19 +13,18 @@ async function loadGraphs(state: Ts_State): Promise<void> {
 
             const content: Py_Recieve = await response.json();
 
+            const prevData = state.response.data;
+            const recvData = content.data;
+
+            if (JSON.stringify(recvData) !== JSON.stringify(prevData) || !prevData.completed) {
+                await updateFrame(DOM, state, recvData);
+            }
+
             const isPaused = content.setting.paused;
             const isInterrupted = content.setting.interrupted;
             const isComplete = content.data.completed;
 
-            const totalFrames = content.data.results.length;
-
-            if (
-                // [NOTE] Each run has an assigned ID, during a reset, the ID is incremented. No update
-                // is issued when there is a mismatch between Python and TypeScript.
-                content.setting.run === state.response.setting.run &&
-                JSON.stringify(content.data.results) !== JSON.stringify(state?.response?.data?.results)) {
-                await updateFrame(DOM, state, content.data);
-            }
+            const totalFrames = recvData.results.length;
 
             if (isComplete) {
                 DOM.display.status.innerHTML =
@@ -70,7 +69,6 @@ async function main() {
                 "paused": false,
                 "interrupted": false,
                 "reset": false,
-                "run": await getRunIndex(),
             }
         }, interfaces: [], networks: [], frame: 0, active: [], fetch: true
     };

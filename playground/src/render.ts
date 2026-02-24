@@ -386,8 +386,8 @@ export function createUpdate(prevStates: Py_TrailLayer[], currStates: Py_TrailLa
     return { "addu": addu, "movu": movu, "delu": delu };
 }
 
-export async function updateFrame(DOM: DOM, state: Ts_State, newData: Py_Data) {
-    const results: Py_TrailState[][] = newData.results;
+export async function updateFrame(DOM: DOM, state: Ts_State, recvData: Py_Data) {
+    const results: Py_TrailState[][] = recvData.results;
 
     const prevResults = results[state.frame - 1];
     const nextResults = results[results.length - 1];
@@ -415,11 +415,11 @@ export async function updateFrame(DOM: DOM, state: Ts_State, newData: Py_Data) {
     updateGraphs(state, updates);
 
     // Update state.
-    state.response.data = newData;
-    state.frame = newData.results.length;
+    state.response.data = recvData;
+    state.frame = recvData.results.length;
 
     DOM.display.frameCounter.textContent = `Frame ${state.frame}/${state.frame}`;
 
     // Fragmented strings allow simple transitions to previous frames.
-    DOM.display.llmResponse.value = newData.response.slice(0, state.frame).join('') || "No response available";
+    DOM.display.llmResponse.value = recvData.response.slice(0, state.frame).join('') || "No response available";
 }

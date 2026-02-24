@@ -5,9 +5,10 @@ import time
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, Union
 
-from lextrail.guide import Trail, trail_run
+from lextrail.assemble import ASM, asm_run
+from lextrail.guide import Trail, TrailLayer, trail_run
 
 
 @dataclass
@@ -29,8 +30,42 @@ class UI_Context:
     )
 
 
+@dataclass
+class UICore:
+    core: Union[Trail, ASM]
+
+    @classmethod
+    def new(cls, core: Union[Trail, ASM]):
+        return UICore(core=core)
+
+    @property
+    def state(self):
+        return self.core.state
+
+    @property
+    def proposals(self):
+        return self.state.proposals
+
+    @property
+    def frames(self) -> list[TrailLayer]:
+        match self.core:
+            case Trail(_, _):
+                return [proposal.frame for proposal in self.proposals]
+            case ASM(_, _):
+                return [proposal.frame.layers for proposal in self.proposals]
+
+    def run(self):
+        match self.core:
+            case Trail(_, _):
+                trail_run(self.core)
+            case ASM(_, _):
+                asm_run(self.core)
+
+
 def run_simulation(core: Trail, ui: UI_Context):
     ui_state, ui_settings = ui.state, ui.settings
+
+    core = UICore.new(core)
 
     while True:
         if ui_settings["interrupted"]:
@@ -48,9 +83,6 @@ def run_simulation(core: Trail, ui: UI_Context):
         if ui_settings["reset"]:
             print("Simulation has been reset.")
 
-            # Avoids the gap where the states from TS and Python mismatch.
-            next_run = ui_settings["run"] + 1
-
             ui.state, ui.settings = (
                 {
                     "results": [],
@@ -61,18 +93,16 @@ def run_simulation(core: Trail, ui: UI_Context):
                     "paused": False,
                     "interrupted": False,
                     "reset": False,
-                    "run": 1,
                 },
             )
 
             ui_state, ui_settings = ui.state, ui.settings
-            ui_settings["run"] = next_run
 
             core.state.proposals = []
 
-        trail_run(core)
+        core.run()
 
-        proposals = core.state.proposals
+        proposals = core.proposals
 
         if not proposals:
             print("Simulation is complete, no more states to process.")
@@ -94,10 +124,8 @@ def run_simulation(core: Trail, ui: UI_Context):
 
         core.state.proposals = proposals
 
-        frames = [proposal.frame for proposal in proposals]
-
         ui_state["results"].append(
-            [[layer.serialize() for layer in frame] for frame in frames]
+            [[layer.serialize() for layer in frame] for frame in core.frames]
         )
 
 
